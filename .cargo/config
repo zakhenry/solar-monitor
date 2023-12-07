@@ -1,2 +1,6 @@
+[build]
+target = "arm-unknown-linux-gnueabihf"
+
 [target.arm-unknown-linux-gnueabihf]
 linker = "/opt/homebrew/Cellar/arm-unknown-linux-gnueabihf/11.2.0_1/bin/arm-unknown-linux-gnueabihf-gcc"
+
