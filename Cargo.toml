@@ -6,10 +6,16 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+dotenv = "0.15.0"
 embedded-graphics = { version = "0.8.1", optional = true}
 linux-embedded-hal = { version = "0.3.2", optional = true}
 rand = "0.8.5"
+# this dependency side steps a cross compilation error where the default reqwest crate depends on openssl, and there isn't an openssl lib in brew arm-unknown-linux-gnueabihf lib
+reqwest-rustls-tls ={ version = "0.11", features=["json","socks", "rustls-tls"], default-features = false, package = "reqwest" }
+serde = { version = "1.0", features = ["derive"] }
+
 ssd1306 = { version = "0.8.4", optional = true}
+tokio = { version = "1", features = ["full"] }
 
 [features]
 i2c_display = ["dep:embedded-graphics", "dep:linux-embedded-hal", "dep:ssd1306"]

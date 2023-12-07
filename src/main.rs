@@ -6,13 +6,24 @@ mod solar_status;
 #[cfg(not(feature = "i2c_display"))]
 mod console_display;
 
-use rand::Rng;
-use std::{thread, time}; // 0.8.5
+mod tesla_powerwall;
 
+use std::{thread, time};
+
+use dotenv::dotenv;
 use solar_status::{SolarStatus, SolarStatusDisplay};
+use std::env;
 
-fn main() {
-    println!("Hello, world!");
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // @todo use application specific errors
+    dotenv().ok();
+
+    for (key, value) in env::vars() {
+        println!("{}: {}", key, value);
+    }
+
+    let mut powerwall = tesla_powerwall::PowerwallApi::new()?;
 
     #[cfg(feature = "i2c_display")]
     let mut display = i2c_display::RaspiWithDisplay::new();
@@ -21,12 +32,7 @@ fn main() {
     let mut display = console_display::ConsoleDisplay {};
 
     loop {
-        let status = SolarStatus {
-            solar_power_watts: rand::thread_rng().gen_range(0..10_000),
-            battery_power_watts: rand::thread_rng().gen_range(-5_000..5_000),
-            house_power_watts: rand::thread_rng().gen_range(0..15_000),
-            grid_power_watts: rand::thread_rng().gen_range(-5000..15_000),
-        };
+        let status = powerwall.get_stats().await?;
 
         display.show_status(status);
 
