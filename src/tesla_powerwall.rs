@@ -96,9 +96,11 @@ impl PowerwallApi {
         })
     }
 
-    async fn get_token(&mut self) -> Result<String, PowerwallApiError> {
-        if let Some(token) = &self.api_token {
-            return Ok(token.to_owned());
+    async fn get_token(&mut self, force: bool) -> Result<String, PowerwallApiError> {
+        if !force {
+            if let Some(token) = &self.api_token {
+                return Ok(token.to_owned());
+            }
         }
 
         let mut request_body = HashMap::new();
@@ -128,15 +130,29 @@ impl PowerwallApi {
         Ok(body.token.clone())
     }
 
-    pub async fn get_stats(&mut self) -> Result<SolarStatus, PowerwallApiError> {
-        let body: MetersAggregatesResponse = self
+    async fn get_stats_response(&mut self) -> Result<reqwest::Response, PowerwallApiError> {
+        Ok(self
             .client
             .get(format!("https://{}/api/meters/aggregates", self.ip_address))
-            .bearer_auth(self.get_token().await?)
+            .bearer_auth(self.get_token(false).await?)
             .send()
-            .await?
-            .json::<MetersAggregatesResponse>()
-            .await?;
+            .await?)
+    }
+
+    pub async fn get_stats(&mut self) -> Result<SolarStatus, PowerwallApiError> {
+        let response = self.get_stats_response().await?;
+
+        let body: MetersAggregatesResponse = match response.status() {
+            reqwest::StatusCode::OK => response,
+            reqwest::StatusCode::UNAUTHORIZED => {
+                println!("Token became invalid, fetching another one");
+                self.get_token(true).await?;
+                self.get_stats_response().await?
+            }
+            status => panic!("Unhandled status code {}", status),
+        }
+        .json::<MetersAggregatesResponse>()
+        .await?;
 
         Ok(body.into())
     }

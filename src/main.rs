@@ -12,18 +12,12 @@ use std::{thread, time};
 
 use dotenv::dotenv;
 use solar_status::SolarStatusDisplay;
-use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // @todo use application specific errors
     dotenv().ok();
-
-    for (key, value) in env::vars() {
-        println!("{}: {}", key, value);
-    }
 
     let mut powerwall = tesla_powerwall::PowerwallApi::new()?;
 
@@ -41,6 +35,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     #[cfg(not(feature = "i2c_display"))]
     let mut display = console_display::ConsoleDisplay {};
+
+    display.startup();
 
     loop {
         let status = powerwall.get_stats().await?;

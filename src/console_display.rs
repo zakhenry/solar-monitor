@@ -10,4 +10,8 @@ impl SolarStatusDisplay for ConsoleDisplay {
     fn shutdown(&mut self) {
         println!("Shutting down display");
     }
+
+    fn startup(&mut self) {
+        println!("Starting display");
+    }
 }

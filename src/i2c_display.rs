@@ -1,4 +1,5 @@
 use embedded_graphics::{
+    image::Image,
     mono_font::{ascii::FONT_6X9, MonoTextStyleBuilder},
     pixelcolor::BinaryColor,
     prelude::*,
@@ -6,6 +7,9 @@ use embedded_graphics::{
 };
 use linux_embedded_hal::I2cdev;
 use ssd1306::{mode::BufferedGraphicsMode, prelude::*, I2CDisplayInterface, Ssd1306};
+use std::{thread, time};
+use tinybmp::Bmp;
+use tokio::time::Instant;
 
 use crate::solar_status::{SolarStatus, SolarStatusDisplay};
 
@@ -28,6 +32,32 @@ impl RaspiWithDisplay {
 }
 
 impl SolarStatusDisplay for RaspiWithDisplay {
+    fn startup(&mut self) {
+        let frames: Vec<Bmp<BinaryColor>> = vec![
+            include_bytes!("resources/solar-spy-1.bmp"),
+            include_bytes!("resources/solar-spy-2.bmp"),
+            include_bytes!("resources/solar-spy-3.bmp"),
+            include_bytes!("resources/solar-spy-4.bmp"),
+            include_bytes!("resources/solar-spy-5.bmp"),
+        ]
+        .into_iter()
+        .map(|it| Bmp::from_slice(it).unwrap())
+        .collect();
+
+        let duration = time::Duration::from_millis(2_000);
+
+        let due_time = Instant::now() + duration;
+
+        while due_time > Instant::now() {
+            for frame in &frames {
+                let img = Image::new(frame, Point::zero());
+                img.draw(&mut self.display).unwrap();
+                self.display.flush().unwrap();
+                thread::sleep(time::Duration::from_millis(20));
+            }
+        }
+    }
+
     fn show_status(&mut self, status: SolarStatus) {
         let character_style = MonoTextStyleBuilder::new()
             .font(&FONT_6X9)

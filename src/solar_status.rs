@@ -9,4 +9,5 @@ pub struct SolarStatus {
 pub trait SolarStatusDisplay {
     fn show_status(&mut self, status: SolarStatus);
     fn shutdown(&mut self);
+    fn startup(&mut self);
 }
