@@ -68,6 +68,7 @@ impl SolarStatusDisplay for RaspiWithDisplay {
             )
             .draw(&mut self.display)
             .unwrap();
+
             Text::with_text_style(
                 &format!("{:.2}kW", row.1),
                 Point::new(
@@ -81,6 +82,11 @@ impl SolarStatusDisplay for RaspiWithDisplay {
             .unwrap();
         }
 
+        self.display.flush().unwrap();
+    }
+
+    fn shutdown(&mut self) {
+        self.display.clear(BinaryColor::Off).unwrap();
         self.display.flush().unwrap();
     }
 }

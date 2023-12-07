@@ -1,11 +1,9 @@
 use crate::solar_status::SolarStatus;
 
 use std::collections::HashMap;
-use std::{thread, time};
 
 extern crate reqwest_rustls_tls as reqwest;
 
-use rand::Rng;
 use serde::Deserialize;
 use std::env;
 use std::fmt::{Debug, Display, Formatter};
@@ -42,7 +40,7 @@ struct Solar {
 #[derive(Deserialize)]
 struct MetersAggregatesResponse {
     site: Site,
-    battery: Site,
+    battery: Battery,
     load: Load,
     solar: Solar,
 }
