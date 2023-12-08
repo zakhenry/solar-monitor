@@ -6,20 +6,43 @@ mod solar_status;
 #[cfg(not(feature = "i2c_display"))]
 mod console_display;
 
+mod error;
 mod tesla_powerwall;
 
 use std::{thread, time};
 
+use crate::error::SolarMonitorError;
+use crate::tesla_powerwall::PowerwallApi;
 use dotenv::dotenv;
 use solar_status::SolarStatusDisplay;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+async fn main_loop(
+    mut powerwall: PowerwallApi,
+    display: Box<&mut dyn SolarStatusDisplay>,
+    shutdown_signal: Arc<AtomicBool>,
+) -> Result<(), SolarMonitorError> {
+    loop {
+        let status = powerwall.get_stats().await?;
+
+        display.show_status(status)?;
+
+        thread::sleep(time::Duration::from_millis(1_000));
+
+        if shutdown_signal.load(Ordering::Relaxed) {
+            break;
+        }
+    }
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     dotenv().ok();
 
-    let mut powerwall = tesla_powerwall::PowerwallApi::new()?;
+    let powerwall = PowerwallApi::new()?;
 
     #[cfg(feature = "i2c_display")]
     let mut display = i2c_display::RaspiWithDisplay::new();
@@ -28,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let shutdown_copy = Arc::clone(&shutdown);
     ctrlc::set_handler(move || {
-        println!("received Ctrl+C!");
+        println!("received ctrl+c");
         shutdown_copy.store(true, Ordering::Relaxed);
     })
     .expect("Error setting Ctrl-C handler");
@@ -36,21 +59,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     #[cfg(not(feature = "i2c_display"))]
     let mut display = console_display::ConsoleDisplay {};
 
-    display.startup();
+    display.startup()?;
 
-    loop {
-        let status = powerwall.get_stats().await?;
+    let res = main_loop(powerwall, Box::new(&mut display), shutdown).await;
 
-        display.show_status(status);
-
-        thread::sleep(time::Duration::from_millis(1_000));
-
-        if shutdown.load(Ordering::Relaxed) {
-            break;
-        }
+    if let Err(e) = res {
+        display.show_error(e)?;
+    } else {
+        display.shutdown()?;
     }
-
-    display.shutdown();
 
     Ok(())
 }

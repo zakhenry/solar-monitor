@@ -1,3 +1,6 @@
+use crate::error::SolarMonitorError;
+use crate::solar_status::{SolarStatus, SolarStatusDisplay};
+use embedded_graphics::mono_font::iso_8859_1::FONT_4X6;
 use embedded_graphics::{
     image::Image,
     mono_font::{ascii::FONT_6X9, MonoTextStyleBuilder},
@@ -10,8 +13,6 @@ use ssd1306::{mode::BufferedGraphicsMode, prelude::*, I2CDisplayInterface, Ssd13
 use std::{thread, time};
 use tinybmp::Bmp;
 use tokio::time::Instant;
-
-use crate::solar_status::{SolarStatus, SolarStatusDisplay};
 
 pub struct RaspiWithDisplay {
     display:
@@ -31,8 +32,20 @@ impl RaspiWithDisplay {
     }
 }
 
+impl From<display_interface::DisplayError> for SolarMonitorError {
+    fn from(value: display_interface::DisplayError) -> Self {
+        SolarMonitorError::DISPLAY(format!("{:?}", value))
+    }
+}
+
+impl From<tinybmp::ParseError> for SolarMonitorError {
+    fn from(value: tinybmp::ParseError) -> Self {
+        SolarMonitorError::BITMAP(format!("{:?}", value))
+    }
+}
+
 impl SolarStatusDisplay for RaspiWithDisplay {
-    fn startup(&mut self) {
+    fn startup(&mut self) -> Result<(), SolarMonitorError> {
         let frames: Vec<Bmp<BinaryColor>> = vec![
             include_bytes!("resources/solar-spy-1.bmp"),
             include_bytes!("resources/solar-spy-2.bmp"),
@@ -51,14 +64,23 @@ impl SolarStatusDisplay for RaspiWithDisplay {
         while due_time > Instant::now() {
             for frame in &frames {
                 let img = Image::new(frame, Point::zero());
-                img.draw(&mut self.display).unwrap();
-                self.display.flush().unwrap();
+                img.draw(&mut self.display)?;
+                self.display.flush()?;
                 thread::sleep(time::Duration::from_millis(20));
             }
         }
+
+        Ok(())
     }
 
-    fn show_status(&mut self, status: SolarStatus) {
+    fn show_status(&mut self, status: SolarStatus) -> Result<(), SolarMonitorError> {
+        self.display.clear(BinaryColor::Off)?;
+
+        let icons_file = include_bytes!("resources/icons.bmp");
+        let icons_bmp = &Bmp::from_slice(icons_file)?;
+        let icons_img = Image::new(icons_bmp, Point::zero());
+        icons_img.draw(&mut self.display)?;
+
         let character_style = MonoTextStyleBuilder::new()
             .font(&FONT_6X9)
             .text_color(BinaryColor::On)
@@ -71,21 +93,16 @@ impl SolarStatusDisplay for RaspiWithDisplay {
             .build();
         let text_style = text_style_builder.build();
 
-        let left_align = 2;
+        let left_align = 10;
         let row_spacing: i32 = (&character_style.font.character_size.height - 1) as i32;
         let right_align = 0;
 
         let rows = vec![
-            ("Solar power", (status.solar_power_watts as f32) / 1000.0),
-            ("Grid power", (status.grid_power_watts as f32) / 1000.0),
-            ("House power", (status.house_power_watts as f32) / 1000.0),
-            (
-                "Battery power",
-                (status.battery_power_watts as f32) / 1000.0,
-            ),
+            ("Solar", (status.solar_power_watts as f32) / 1000.0),
+            ("House", (status.house_power_watts as f32) / 1000.0),
+            ("Battery", (status.battery_power_watts as f32) / 1000.0),
+            ("Grid", (status.grid_power_watts as f32) / 1000.0),
         ];
-
-        self.display.clear(BinaryColor::Off).unwrap();
 
         for (index, row) in rows.iter().enumerate() {
             let y_pos: i32 = &(index as i32) * &row_spacing - 1;
@@ -96,8 +113,7 @@ impl SolarStatusDisplay for RaspiWithDisplay {
                 character_style,
                 text_style,
             )
-            .draw(&mut self.display)
-            .unwrap();
+            .draw(&mut self.display)?;
 
             Text::with_text_style(
                 &format!("{:.2}kW", row.1),
@@ -108,15 +124,33 @@ impl SolarStatusDisplay for RaspiWithDisplay {
                 character_style,
                 number_style,
             )
-            .draw(&mut self.display)
-            .unwrap();
+            .draw(&mut self.display)?;
         }
 
-        self.display.flush().unwrap();
+        self.display.flush()?;
+
+        Ok(())
     }
 
-    fn shutdown(&mut self) {
-        self.display.clear(BinaryColor::Off).unwrap();
-        self.display.flush().unwrap();
+    fn shutdown(&mut self) -> Result<(), SolarMonitorError> {
+        self.display.clear(BinaryColor::Off)?;
+        self.display.flush()?;
+        Ok(())
+    }
+
+    fn show_error(&mut self, err: SolarMonitorError) -> Result<(), SolarMonitorError> {
+        self.display.clear(BinaryColor::On)?;
+
+        Text::new(
+            &*format!("{:?}", err),
+            Point::new(2, (self.display.dimensions().1 / 2) as i32),
+            MonoTextStyleBuilder::new()
+                .font(&FONT_4X6)
+                .text_color(BinaryColor::Off)
+                .build(),
+        )
+        .draw(&mut self.display)?;
+        self.display.flush()?;
+        Ok(())
     }
 }

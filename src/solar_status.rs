@@ -1,3 +1,5 @@
+use crate::error::SolarMonitorError;
+
 #[derive(Debug)]
 pub struct SolarStatus {
     pub solar_power_watts: i32,
@@ -7,7 +9,8 @@ pub struct SolarStatus {
 }
 
 pub trait SolarStatusDisplay {
-    fn show_status(&mut self, status: SolarStatus);
-    fn shutdown(&mut self);
-    fn startup(&mut self);
+    fn show_status(&mut self, status: SolarStatus) -> Result<(), SolarMonitorError>;
+    fn shutdown(&mut self) -> Result<(), SolarMonitorError>;
+    fn startup(&mut self) -> Result<(), SolarMonitorError>;
+    fn show_error(&mut self, err: SolarMonitorError) -> Result<(), SolarMonitorError>;
 }

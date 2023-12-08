@@ -8,6 +8,8 @@ use serde::Deserialize;
 use std::env;
 use std::fmt::{Debug, Display, Formatter};
 
+use crate::error::SolarMonitorError;
+
 pub struct PowerwallApi {
     ip_address: String,
     api_token: Option<String>,
@@ -77,6 +79,12 @@ impl From<reqwest::Error> for PowerwallApiError {
 impl Display for PowerwallApiError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self)
+    }
+}
+
+impl From<PowerwallApiError> for SolarMonitorError {
+    fn from(value: PowerwallApiError) -> Self {
+        SolarMonitorError::API(value)
     }
 }
 
