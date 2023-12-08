@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Solar Monitor
+Wants=network-online.target
+After=multi-user.target network-online.target
+
+[Service]
+ExecStart=/home/zak/solar-monitor
+EnvironmentFile=/home/zak/.env
+
+[Install]
+WantedBy=multi-user.target

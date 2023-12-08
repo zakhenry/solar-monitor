@@ -18,6 +18,7 @@ serde = { version = "1.0", features = ["derive"] }
 ssd1306 = { version = "0.8.4", optional = true}
 tinybmp = { version = "0.5.0", optional = true }
 tokio = { version = "1", features = ["full"] }
+tryhard = "0.5.1"
 
 [features]
 i2c_display = ["dep:embedded-graphics", "dep:linux-embedded-hal", "dep:ssd1306", "dep:tinybmp", "dep:display-interface"]

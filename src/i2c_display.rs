@@ -57,7 +57,8 @@ impl SolarStatusDisplay for RaspiWithDisplay {
         .map(|it| Bmp::from_slice(it).unwrap())
         .collect();
 
-        let duration = time::Duration::from_millis(2_000);
+        // @todo make an async race with the network startup so the animation lasts as long as the network is still going
+        let duration = time::Duration::from_millis(5_000);
 
         let due_time = Instant::now() + duration;
 
@@ -138,7 +139,7 @@ impl SolarStatusDisplay for RaspiWithDisplay {
         Ok(())
     }
 
-    fn show_error(&mut self, err: SolarMonitorError) -> Result<(), SolarMonitorError> {
+    fn show_error(&mut self, err: &SolarMonitorError) -> Result<(), SolarMonitorError> {
         self.display.clear(BinaryColor::On)?;
 
         Text::new(

@@ -19,7 +19,7 @@ impl SolarStatusDisplay for ConsoleDisplay {
         Ok(())
     }
 
-    fn show_error(&mut self, err: SolarMonitorError) -> Result<(), SolarMonitorError> {
+    fn show_error(&mut self, err: &SolarMonitorError) -> Result<(), SolarMonitorError> {
         eprintln!("Intercepted error: {:?}", err);
         Ok(())
     }

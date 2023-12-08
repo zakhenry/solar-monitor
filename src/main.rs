@@ -23,6 +23,9 @@ async fn main_loop(
     display: Box<&mut dyn SolarStatusDisplay>,
     shutdown_signal: Arc<AtomicBool>,
 ) -> Result<(), SolarMonitorError> {
+
+    powerwall.wait_for_connection().await?;
+
     loop {
         let status = powerwall.get_stats().await?;
 
@@ -39,7 +42,7 @@ async fn main_loop(
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn main() -> Result<(), SolarMonitorError> {
     dotenv().ok();
 
     let powerwall = PowerwallApi::new()?;
@@ -64,10 +67,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let res = main_loop(powerwall, Box::new(&mut display), shutdown).await;
 
     if let Err(e) = res {
-        display.show_error(e)?;
+        display.show_error(&e)?;
+        return Err(e);
     } else {
         display.shutdown()?;
     }
-
     Ok(())
+
 }

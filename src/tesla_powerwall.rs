@@ -7,10 +7,13 @@ extern crate reqwest_rustls_tls as reqwest;
 use serde::Deserialize;
 use std::env;
 use std::fmt::{Debug, Display, Formatter};
+use std::time::Duration;
+use reqwest_rustls_tls::{Error, Response};
 
 use crate::error::SolarMonitorError;
 
 pub struct PowerwallApi {
+
     ip_address: String,
     api_token: Option<String>,
     client: reqwest::Client,
@@ -102,6 +105,28 @@ impl PowerwallApi {
             api_token: None,
             client,
         })
+    }
+
+    async fn check_status(&self) -> Result<Response, Error> {
+        self
+            .client
+            .get(format!("https://{}/api/status", self.ip_address))
+            .send()
+            .await
+    }
+
+    pub async fn wait_for_connection(&self) -> Result<(), PowerwallApiError> {
+
+        println!("Checking connection");
+
+        tryhard::retry_fn(|| self.check_status())
+            .retries(300) // 1 full minute
+            .fixed_backoff(Duration::from_millis(200))
+            .await?;
+
+        println!("Connection is ready");
+
+        Ok(())
     }
 
     async fn get_token(&mut self, force: bool) -> Result<String, PowerwallApiError> {
