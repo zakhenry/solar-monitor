@@ -23,7 +23,6 @@ async fn main_loop(
     display: Box<&mut dyn SolarStatusDisplay>,
     shutdown_signal: Arc<AtomicBool>,
 ) -> Result<(), SolarMonitorError> {
-
     powerwall.wait_for_connection().await?;
 
     loop {
@@ -73,5 +72,4 @@ async fn main() -> Result<(), SolarMonitorError> {
         display.shutdown()?;
     }
     Ok(())
-
 }

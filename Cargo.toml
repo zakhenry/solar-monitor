@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ctrlc = "3.4.1"
+ctrlc = {version = "3.4.1", features = ["termination"]}
 dotenv = "0.15.0"
 embedded-graphics = { version = "0.8.1", optional = true}
 linux-embedded-hal = { version = "0.3.2", optional = true}
