@@ -10,6 +10,7 @@ mod error;
 mod tesla_powerwall;
 
 use std::{thread, time};
+use std::cell::RefCell;
 
 use crate::error::SolarMonitorError;
 use crate::tesla_powerwall::PowerwallApi;
@@ -92,27 +93,36 @@ const NINE: u8 = 0b01101111;
 fn main() {
     let mut adapter = WS28xxSpiAdapter::new("/dev/spidev0.0").unwrap();
 
-    let mut display_string = SevenSegmentDisplayString::new(&mut adapter);
+    let mut display_string = SevenSegmentDisplayString::new(&mut adapter, 4);
 
-    display_string.add_display();
-    display_string.add_display();
-    println!("Displays added");
-
-    println!("Running loop");
-
-    loop {
-        for i in 0..=9 {
-            let random_rgb = (random::<u8>(), random::<u8>(), random::<u8>());
-            display_string.set_digit(0, i, random_rgb);
-            for j in 0..=9 {
-                display_string.set_digit(1, j, random_rgb);
-
-                display_string.flush();
-
-                thread::sleep(time::Duration::from_millis(100));
-            }
-        }
+    // println!("Running loop");
+    //
+    // loop {
+    //     for i in 0..=9 {
+    //         let random_rgb = (random::<u8>(), random::<u8>(), random::<u8>());
+    //         display_string.set_digit(0, i, random_rgb);
+    //         for j in 0..=9 {
+    //             display_string.set_digit(1, j, random_rgb);
+    //
+    //             display_string.flush();
+    //
+    //             thread::sleep(time::Duration::from_millis(100));
+    //         }
+    //     }
+    // }
+    {
+        display_string.set_digit(0, 1, (105,68,5));
+        display_string.set_digit(1, 2, (43,57,6));
+        display_string.set_digit(2, 3, (107,6,6));
+        display_string.set_digit(3, 4, (40,5,45));
+        // let mut number_field = display_string.derive_numeric_display(&[0, 1]);
+        //
+        // number_field.set_raw(Some(42), None, (123, 0, 234));
     }
+    display_string.flush();
+
+    println!("done!");
+
 }
 
 trait WriteRgbDigit {
@@ -135,6 +145,7 @@ impl WriteRgbDigit for WS28xxSpiAdapter {
     }
 }
 
+#[derive(Clone)]
 struct SevenSegmentDisplay {
     state_rgb: [u8; 24],
 }
@@ -144,21 +155,20 @@ struct SevenSegmentDisplayString<'a> {
     adapter: &'a mut dyn WriteRgbDigit,
 }
 
-impl SevenSegmentDisplayString<'_> {
-    fn new(adapter: &mut impl WriteRgbDigit) -> SevenSegmentDisplayString {
-        return SevenSegmentDisplayString {
-            digits: Vec::new(),
-            adapter,
-        };
-    }
+impl <'a>SevenSegmentDisplayString<'a> {
+    fn new(adapter: &mut impl WriteRgbDigit, display_count: usize) -> SevenSegmentDisplayString {
 
-    fn add_display(&mut self) {
         let display_init: [u8; 24] = random();
         let new_display_state = SevenSegmentDisplay {
             state_rgb: display_init,
         };
 
-        self.digits.push(new_display_state)
+        let digits = vec![new_display_state; display_count];
+
+        return SevenSegmentDisplayString {
+            digits,
+            adapter,
+        };
     }
 
     fn flush(&mut self) {
@@ -167,6 +177,18 @@ impl SevenSegmentDisplayString<'_> {
         self.adapter
             .write_spi_encoded(&encoded)
             .expect("should work");
+    }
+
+    fn derive_numeric_display(&'a mut self, display_indices: &'a[usize]) -> NumericDisplay<'a> {
+
+        return NumericDisplay {
+            display_indices,
+            display_string: self,
+            value_raw: None,
+            decimal: None,
+            color_rgb: (0, 0, 0)
+        }
+
     }
 
     fn set_digit(&mut self, digit_index: usize, value: u8, color: (u8, u8, u8)) {
@@ -196,48 +218,51 @@ impl SevenSegmentDisplayString<'_> {
             }
         }
 
-        self.digits[digit_index].state_rgb = led_colors.into();
+        self.digits[digit_index].state_rgb = led_colors;
     }
 }
 
-struct RgbDigitDisplay {
-    num_digits: u8,
+struct NumericDisplay<'a> {
+    display_indices: &'a[usize],
+    display_string: & 'a mut SevenSegmentDisplayString<'a>,
     value_raw: Option<i32>,
     decimal: Option<u8>,
     color_rgb: (u8, u8, u8),
 }
 
-// impl RgbDigitDisplay {
-//
-//
-//     fn clear(&mut self) {
-//         self.value_raw = None
-//     }
-//
-//     fn set_raw(&mut self, value_raw: Option<i32>, decimal: Option<u8>, color_rgb: (u8, u8, u8)) {
-//         self.color_rgb = color_rgb;
-//         self.value_raw = value_raw;
-//         self.decimal = decimal;
-//     }
-//
-//     fn write(&self, &mut adapter: impl WriteRgbDigit) {
-//
-//         if self.value_raw == None {
-//             return
-//         }
-//
-//         let mut num = self.value_raw;
-//         let base = 10usize;
-//         let mut digit = 0;
-//         while num != 0 {
-//             println!("{:?}", num % base);
-//             num /= base;
-//             digit += 1;
-//         }
-//
-//     }
-//
-// }
+impl NumericDisplay<'_> {
+
+    fn clear(&mut self) {
+        self.value_raw = None
+    }
+
+    fn set_raw(&mut self, value_raw: Option<i32>, decimal: Option<u8>, color_rgb: (u8, u8, u8)) {
+        self.color_rgb = color_rgb;
+        self.value_raw = value_raw;
+        self.decimal = decimal;
+    }
+
+    fn write(&mut self) {
+
+        if self.value_raw == None {
+            return
+        }
+
+        let mut num = self.value_raw.unwrap();
+        let base = 10;
+        let mut power = 0;
+        while num != 0 {
+            let digit = num % base;
+
+            self.display_string.set_digit(self.display_indices[power], digit.try_into().expect("hmm"), self.color_rgb);
+
+            num /= base;
+            power += 1;
+        }
+
+    }
+
+}
 
 /*
 
