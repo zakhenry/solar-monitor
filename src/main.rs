@@ -14,13 +14,13 @@ use std::{thread, time};
 use crate::error::SolarMonitorError;
 use crate::tesla_powerwall::PowerwallApi;
 use dotenv::dotenv;
+use rand::prelude::*;
 use solar_status::SolarStatusDisplay;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use ws2818_rgb_led_spi_driver::adapter_gen::WS28xxAdapter;
 use ws2818_rgb_led_spi_driver::adapter_spi::WS28xxSpiAdapter;
 use ws2818_rgb_led_spi_driver::encoding::encode_rgb;
-use rand::prelude::*;
 
 async fn main_loop(
     mut powerwall: PowerwallApi,
@@ -78,70 +78,166 @@ async fn main_loop(
 //     Ok(())
 // }
 
-
-const ZERO: i32     = 0b00111111;
-const ONE: i32      = 0b00000110;
-const TWO: i32      = 0b01011011;
-const THREE: i32    = 0b01001111;
-const FOUR: i32     = 0b01100110;
-const FIVE: i32     = 0b01101101;
-const SIX: i32      = 0b01111101;
-const SEVEN: i32    = 0b00000111;
-const EIGHT: i32    = 0b01111111;
-const NINE: i32     = 0b01101111;
-//                      87654321
+const ZERO: u8 = 0b00111111;
+const ONE: u8 = 0b00000110;
+const TWO: u8 = 0b01011011;
+const THREE: u8 = 0b01001111;
+const FOUR: u8 = 0b01100110;
+const FIVE: u8 = 0b01101101;
+const SIX: u8 = 0b01111101;
+const SEVEN: u8 = 0b00000111;
+const EIGHT: u8 = 0b01111111;
+const NINE: u8 = 0b01101111;
+//                     87654321
 fn main() {
-
     let mut adapter = WS28xxSpiAdapter::new("/dev/spidev0.0").unwrap();
 
+    let mut display_string = SevenSegmentDisplayString::new(&mut adapter);
+
+    display_string.add_display();
+    display_string.add_display();
+    println!("Displays added");
+
+    println!("Running loop");
+
     loop {
-
         for i in 0..=9 {
+            let random_rgb = (random::<u8>(), random::<u8>(), random::<u8>());
+            display_string.set_digit(0, i, random_rgb);
+            for j in 0..=9 {
+                display_string.set_digit(1, j, random_rgb);
 
+                display_string.flush();
 
-            let random_rgb = (rand::random::<u8>(), rand::random::<u8>(), rand::random::<u8>());
-
-            write_digit(i, &mut adapter, random_rgb);
-
-            thread::sleep(time::Duration::from_millis(200));
+                thread::sleep(time::Duration::from_millis(100));
+            }
         }
-
     }
 }
 
-fn write_digit(digit: u8, adapter: &mut WS28xxSpiAdapter, color: (u8, u8, u8)) {
-
-    let encoded = match digit {
-        0 => ZERO,
-        1 => ONE,
-        2 => TWO,
-        3 => THREE,
-        4 => FOUR,
-        5 => FIVE,
-        6 => SIX,
-        7 => SEVEN,
-        8 => EIGHT,
-        9 => NINE,
-        _ => panic!("Single digits only allowed!")
-    };
-
-    let mut spi_encoded_rgb_bits = vec![];
-
-    for i in 0..8 {
-
-        if encoded >> i & 1 == 1 {
-            let (r, g, b) = color;
-            spi_encoded_rgb_bits.extend_from_slice(&encode_rgb(r, g, b));
-        } else {
-            spi_encoded_rgb_bits.extend_from_slice(&encode_rgb(0, 0, 0));
-        }
-
-    }
-
-    adapter.write_encoded_rgb(&spi_encoded_rgb_bits).unwrap();
-
+trait WriteRgbDigit {
+    fn write_spi_encoded(&mut self, encoded: &Vec<u8>) -> Result<(), String>;
 }
 
+impl WriteRgbDigit for WS28xxSpiAdapter {
+    fn write_spi_encoded(&mut self, encoded: &Vec<u8>) -> Result<(), String> {
+        let encoded: Vec<u8> = encoded
+            .chunks(3)
+            .flat_map(|chunk| {
+                let [r, g, b]: [_; 3] = chunk
+                    .try_into()
+                    .expect("should be chunks of three for each r/g/b channel!");
+                encode_rgb(r, g, b)
+            })
+            .collect();
+
+        self.write_encoded_rgb(&encoded)
+    }
+}
+
+struct SevenSegmentDisplay {
+    state_rgb: [u8; 24],
+}
+
+struct SevenSegmentDisplayString<'a> {
+    digits: Vec<SevenSegmentDisplay>,
+    adapter: &'a mut dyn WriteRgbDigit,
+}
+
+impl SevenSegmentDisplayString<'_> {
+    fn new(adapter: &mut impl WriteRgbDigit) -> SevenSegmentDisplayString {
+        return SevenSegmentDisplayString {
+            digits: Vec::new(),
+            adapter,
+        };
+    }
+
+    fn add_display(&mut self) {
+        let display_init: [u8; 24] = random();
+        let new_display_state = SevenSegmentDisplay {
+            state_rgb: display_init,
+        };
+
+        self.digits.push(new_display_state)
+    }
+
+    fn flush(&mut self) {
+        let encoded: Vec<u8> = self.digits.iter().flat_map(|it| it.state_rgb).collect();
+
+        self.adapter
+            .write_spi_encoded(&encoded)
+            .expect("should work");
+    }
+
+    fn set_digit(&mut self, digit_index: usize, value: u8, color: (u8, u8, u8)) {
+        let encoded = match value {
+            0 => ZERO,
+            1 => ONE,
+            2 => TWO,
+            3 => THREE,
+            4 => FOUR,
+            5 => FIVE,
+            6 => SIX,
+            7 => SEVEN,
+            8 => EIGHT,
+            9 => NINE,
+            _ => panic!("Single digits only allowed!"),
+        };
+
+        let mut led_colors: [u8; 24] = [0; 24];
+        let (r, g, b) = color;
+        let color_slice = [r, g, b];
+
+        for i in 0..8 {
+            if encoded >> i & 1 == 1 {
+                let offset = i * 3;
+
+                led_colors[offset..offset + 3].copy_from_slice(&color_slice);
+            }
+        }
+
+        self.digits[digit_index].state_rgb = led_colors.into();
+    }
+}
+
+struct RgbDigitDisplay {
+    num_digits: u8,
+    value_raw: Option<i32>,
+    decimal: Option<u8>,
+    color_rgb: (u8, u8, u8),
+}
+
+// impl RgbDigitDisplay {
+//
+//
+//     fn clear(&mut self) {
+//         self.value_raw = None
+//     }
+//
+//     fn set_raw(&mut self, value_raw: Option<i32>, decimal: Option<u8>, color_rgb: (u8, u8, u8)) {
+//         self.color_rgb = color_rgb;
+//         self.value_raw = value_raw;
+//         self.decimal = decimal;
+//     }
+//
+//     fn write(&self, &mut adapter: impl WriteRgbDigit) {
+//
+//         if self.value_raw == None {
+//             return
+//         }
+//
+//         let mut num = self.value_raw;
+//         let base = 10usize;
+//         let mut digit = 0;
+//         while num != 0 {
+//             println!("{:?}", num % base);
+//             num /= base;
+//             digit += 1;
+//         }
+//
+//     }
+//
+// }
 
 /*
 
