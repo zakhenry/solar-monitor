@@ -5,10 +5,12 @@ use std::{thread, time};
 use dotenv::dotenv;
 use rand::prelude::*;
 use ws2818_rgb_led_spi_driver::adapter_gen::WS28xxAdapter;
+use ws2818_rgb_led_spi_driver::adapter_spi::WS28xxSpiAdapter;
 
 use solar_status::SolarStatusDisplay;
 
 use crate::error::SolarMonitorError;
+use crate::rgbdigit::SevenSegmentDisplayString;
 use crate::tesla_powerwall::PowerwallApi;
 
 #[cfg(feature = "i2c_display")]
@@ -54,7 +56,17 @@ async fn main() -> Result<(), SolarMonitorError> {
 
     #[cfg(feature = "i2c_display")]
     // let mut display = i2c_display::RaspiWithDisplay::new();
-    let mut display = rgbdigit_display::RgbDigitDisplay::new();
+
+    let adapter = WS28xxSpiAdapter::new("/dev/spidev0.0").unwrap();
+    let seven_segment_display = SevenSegmentDisplayString::new(adapter, 8);
+    let mut display = rgbdigit_display::RgbDigitDisplay {
+        display: &seven_segment_display,
+        solar_generation_status: &mut seven_segment_display.derive_numeric_display(&[0, 1]),
+        house_consumption_status: &mut seven_segment_display.derive_numeric_display(&[2, 3]),
+        battery_status: &mut seven_segment_display.derive_numeric_display(&[4, 5]),
+        grid_status: &mut seven_segment_display.derive_numeric_display(&[6,7]),
+        gradient: colorgrad::viridis()
+    };
 
     let shutdown = Arc::new(AtomicBool::new(false));
 

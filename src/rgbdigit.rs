@@ -109,6 +109,7 @@ impl SevenSegmentDisplayString {
             color_rgb: (0, 0, 0),
         };
     }
+
 }
 
 trait NumericSevenSegmentDisplay {
