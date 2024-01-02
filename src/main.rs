@@ -61,10 +61,10 @@ async fn main() -> Result<(), SolarMonitorError> {
     let seven_segment_display = SevenSegmentDisplayString::new(adapter, 8);
     let mut display = rgbdigit_display::RgbDigitDisplay {
         display: &seven_segment_display,
-        solar_generation_status: &mut seven_segment_display.derive_numeric_display(&[0, 1]),
-        house_consumption_status: &mut seven_segment_display.derive_numeric_display(&[2, 3]),
-        battery_status: &mut seven_segment_display.derive_numeric_display(&[4, 5]),
-        grid_status: &mut seven_segment_display.derive_numeric_display(&[6,7]),
+        solar_generation_status: &mut seven_segment_display.derive_numeric_display(&[4, 5]),
+        house_consumption_status: &mut seven_segment_display.derive_numeric_display(&[6,7]),
+        battery_status: &mut seven_segment_display.derive_numeric_display(&[0, 1]),
+        grid_status: &mut seven_segment_display.derive_numeric_display(&[2, 3]),
         gradient: colorgrad::viridis()
     };
 
