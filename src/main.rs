@@ -1,3 +1,18 @@
+use std::cell::RefCell;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::{thread, time};
+
+use rand::prelude::*;
+use ws2818_rgb_led_spi_driver::adapter_gen::WS28xxAdapter;
+use ws2818_rgb_led_spi_driver::adapter_spi::WS28xxSpiAdapter;
+use ws2818_rgb_led_spi_driver::encoding::encode_rgb;
+
+use solar_status::SolarStatusDisplay;
+
+use crate::error::SolarMonitorError;
+use crate::tesla_powerwall::PowerwallApi;
+
 #[cfg(feature = "i2c_display")]
 mod i2c_display;
 
@@ -8,20 +23,6 @@ mod console_display;
 
 mod error;
 mod tesla_powerwall;
-
-use std::{thread, time};
-use std::cell::RefCell;
-
-use crate::error::SolarMonitorError;
-use crate::tesla_powerwall::PowerwallApi;
-use dotenv::dotenv;
-use rand::prelude::*;
-use solar_status::SolarStatusDisplay;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use ws2818_rgb_led_spi_driver::adapter_gen::WS28xxAdapter;
-use ws2818_rgb_led_spi_driver::adapter_spi::WS28xxSpiAdapter;
-use ws2818_rgb_led_spi_driver::encoding::encode_rgb;
 
 async fn main_loop(
     mut powerwall: PowerwallApi,
@@ -79,6 +80,20 @@ async fn main_loop(
 //     Ok(())
 // }
 
+
+/*
+
+Digit layout:
+
+ 1111
+6    2
+6    2
+ 7777
+5    3
+5    3
+ 4444   8
+
+*/
 const ZERO: u8 = 0b00111111;
 const ONE: u8 = 0b00000110;
 const TWO: u8 = 0b01011011;
@@ -89,40 +104,33 @@ const SIX: u8 = 0b01111101;
 const SEVEN: u8 = 0b00000111;
 const EIGHT: u8 = 0b01111111;
 const NINE: u8 = 0b01101111;
-//                     87654321
-fn main() {
-    let mut adapter = WS28xxSpiAdapter::new("/dev/spidev0.0").unwrap();
 
-    let mut display_string = SevenSegmentDisplayString::new(&mut adapter, 4);
+const MINUS: u8 = 0b01000000;
+//                  87654321
+fn main() -> Result<(), String> {
+    let adapter = WS28xxSpiAdapter::new("/dev/spidev0.0").unwrap();
 
-    // println!("Running loop");
-    //
-    // loop {
-    //     for i in 0..=9 {
-    //         let random_rgb = (random::<u8>(), random::<u8>(), random::<u8>());
-    //         display_string.set_digit(0, i, random_rgb);
-    //         for j in 0..=9 {
-    //             display_string.set_digit(1, j, random_rgb);
-    //
-    //             display_string.flush();
-    //
-    //             thread::sleep(time::Duration::from_millis(100));
-    //         }
-    //     }
-    // }
-    {
-        display_string.set_digit(0, 1, (105,68,5));
-        display_string.set_digit(1, 2, (43,57,6));
-        display_string.set_digit(2, 3, (107,6,6));
-        display_string.set_digit(3, 4, (40,5,45));
-        // let mut number_field = display_string.derive_numeric_display(&[0, 1]);
-        //
-        // number_field.set_raw(Some(42), None, (123, 0, 234));
+    let display_string = SevenSegmentDisplayString::new(adapter, 4);
+
+    let mut first_pair = display_string.derive_numeric_display(&[0, 1]);
+    let mut second_pair = display_string.derive_numeric_display(&[2, 3]);
+
+    first_pair.set_color((105, 68, 5));
+    second_pair.set_color( (40, 5, 45));
+
+    loop {
+        for i in 1..=99 {
+            first_pair.set_value(format!("{i:>2}"));
+            first_pair.write()?;
+            let decimal = i as f32 / 10.0;
+            second_pair.set_value(format!("{decimal:.1}"));
+            second_pair.write()?;
+
+            display_string.flush();
+
+            thread::sleep(time::Duration::from_millis(500));
+        }
     }
-    display_string.flush();
-
-    println!("done!");
-
 }
 
 trait WriteRgbDigit {
@@ -150,61 +158,96 @@ struct SevenSegmentDisplay {
     state_rgb: [u8; 24],
 }
 
-struct SevenSegmentDisplayString<'a> {
-    digits: Vec<SevenSegmentDisplay>,
-    adapter: &'a mut dyn WriteRgbDigit,
+struct SevenSegmentDisplayString {
+    digits: Vec<RefCell<SevenSegmentDisplay>>,
+    adapter: RefCell<Box<dyn WriteRgbDigit>>,
 }
 
-impl <'a>SevenSegmentDisplayString<'a> {
-    fn new(adapter: &mut impl WriteRgbDigit, display_count: usize) -> SevenSegmentDisplayString {
-
-        let display_init: [u8; 24] = random();
+impl SevenSegmentDisplayString {
+    fn new(
+        adapter: impl WriteRgbDigit + 'static,
+        display_count: usize,
+    ) -> SevenSegmentDisplayString {
+        // let display_init: [u8; 24] = random();
+        let display_init: [u8; 24] = [0; 24];
         let new_display_state = SevenSegmentDisplay {
             state_rgb: display_init,
         };
 
-        let digits = vec![new_display_state; display_count];
+        let digits = vec![new_display_state; display_count]
+            .into_iter()
+            .map(RefCell::new)
+            .collect();
 
         return SevenSegmentDisplayString {
             digits,
-            adapter,
+            adapter: RefCell::new(Box::new(adapter)),
         };
     }
 
-    fn flush(&mut self) {
-        let encoded: Vec<u8> = self.digits.iter().flat_map(|it| it.state_rgb).collect();
+    fn flush(&self) {
+        let encoded: Vec<u8> = self
+            .digits
+            .iter()
+            .flat_map(|it| it.borrow().state_rgb)
+            .collect();
 
         self.adapter
+            .borrow_mut()
             .write_spi_encoded(&encoded)
             .expect("should work");
     }
 
-    fn derive_numeric_display(&'a mut self, display_indices: &'a[usize]) -> NumericDisplay<'a> {
+    fn derive_numeric_display(&self, display_indices: &[usize]) -> NumericDisplay {
+        let digits = display_indices
+            .into_iter()
+            .map(|i| &self.digits[*i])
+            .collect();
 
         return NumericDisplay {
-            display_indices,
-            display_string: self,
-            value_raw: None,
-            decimal: None,
-            color_rgb: (0, 0, 0)
-        }
-
-    }
-
-    fn set_digit(&mut self, digit_index: usize, value: u8, color: (u8, u8, u8)) {
-        let encoded = match value {
-            0 => ZERO,
-            1 => ONE,
-            2 => TWO,
-            3 => THREE,
-            4 => FOUR,
-            5 => FIVE,
-            6 => SIX,
-            7 => SEVEN,
-            8 => EIGHT,
-            9 => NINE,
-            _ => panic!("Single digits only allowed!"),
+            digits,
+            value: None,
+            color_rgb: (0, 0, 0),
         };
+    }
+}
+
+trait NumericSevenSegmentDisplay {
+    fn set_digit(&mut self, value: SevenSegmentChar, color: (u8, u8, u8), decimal: bool);
+}
+
+#[derive(Clone, Debug)]
+enum SevenSegmentChar {
+    Number(u8),
+    Minus,
+    BLANK
+}
+
+impl NumericSevenSegmentDisplay for SevenSegmentDisplay {
+    fn set_digit(&mut self, char: SevenSegmentChar, color: (u8, u8, u8), decimal: bool) {
+        let mut encoded = match char {
+
+            SevenSegmentChar::Number(value) => match value {
+                0 => ZERO,
+                1 => ONE,
+                2 => TWO,
+                3 => THREE,
+                4 => FOUR,
+                5 => FIVE,
+                6 => SIX,
+                7 => SEVEN,
+                8 => EIGHT,
+                9 => NINE,
+                _ => panic!("Single digits only allowed! [{} sent]", value),
+            }
+
+            SevenSegmentChar::Minus => MINUS,
+            SevenSegmentChar::BLANK => 0
+        };
+
+        if decimal {
+            encoded = encoded | 0b10000000;
+        }
 
         let mut led_colors: [u8; 24] = [0; 24];
         let (r, g, b) = color;
@@ -218,62 +261,70 @@ impl <'a>SevenSegmentDisplayString<'a> {
             }
         }
 
-        self.digits[digit_index].state_rgb = led_colors;
+        self.state_rgb = led_colors
     }
 }
 
 struct NumericDisplay<'a> {
-    display_indices: &'a[usize],
-    display_string: & 'a mut SevenSegmentDisplayString<'a>,
-    value_raw: Option<i32>,
-    decimal: Option<u8>,
+    digits: Vec<&'a RefCell<SevenSegmentDisplay>>,
+    value: Option<String>,
     color_rgb: (u8, u8, u8),
 }
 
 impl NumericDisplay<'_> {
-
     fn clear(&mut self) {
-        self.value_raw = None
+        self.value = None;
     }
 
-    fn set_raw(&mut self, value_raw: Option<i32>, decimal: Option<u8>, color_rgb: (u8, u8, u8)) {
+    fn set_color(&mut self, color_rgb: (u8, u8, u8)) {
         self.color_rgb = color_rgb;
-        self.value_raw = value_raw;
-        self.decimal = decimal;
     }
 
-    fn write(&mut self) {
+    fn set_value(&mut self, value: String) {
+        self.value = Some(value);
+    }
 
-        if self.value_raw == None {
-            return
+    fn write(&mut self) -> Result<(), String> {
+
+        let chars: Vec<(SevenSegmentChar, bool)> = match &self.value {
+            None => { vec![(SevenSegmentChar::BLANK, false); self.digits.len()] }
+            Some(value) => {
+
+                let mut chars_iter = value.chars().peekable();
+
+                let mut chars = vec![];
+
+                while let Some(c) = chars_iter.next() {
+                    let decimal = chars_iter.peek() == Some(&'.');
+                    if decimal {
+                        chars_iter.next(); // consume the decimal
+                    }
+
+                    let char = match c {
+                        '0'..='9' => SevenSegmentChar::Number(c.to_digit(10).expect("Char should map to digit").try_into().expect("Char should map to u8")),
+                        '-' => SevenSegmentChar::Minus,
+                        ' ' => SevenSegmentChar::BLANK,
+                        _ => panic!("Unsupported char {c}") // @todo make the type a Result
+                    };
+
+                    chars.push((char, decimal))
+                }
+
+                chars
+            }
+        };
+
+        if &chars.len() > &self.digits.len() {
+            return Err(format!("Insufficient digits to display value [{:?}]", &self.value))
         }
 
-        let mut num = self.value_raw.unwrap();
-        let base = 10;
-        let mut power = 0;
-        while num != 0 {
-            let digit = num % base;
-
-            self.display_string.set_digit(self.display_indices[power], digit.try_into().expect("hmm"), self.color_rgb);
-
-            num /= base;
-            power += 1;
+        for (idx, (char, decimal)) in chars.into_iter().enumerate() {
+            self.digits[idx].borrow_mut().set_digit(char, self.color_rgb, decimal)
         }
+
+        Ok(())
 
     }
 
 }
 
-/*
-
-Digit layout:
-
- 1111
-6    2
-6    2
- 7777
-5    3
-5    3
- 4444   8
-
-*/
