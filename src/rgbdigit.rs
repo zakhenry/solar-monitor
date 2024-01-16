@@ -110,21 +110,27 @@ impl SevenSegmentDisplayString {
         };
     }
 
+    pub fn set_all(&self, char: SevenSegmentChar, color: (u8, u8, u8), decimal: bool) {
+        for display in &self.digits {
+            display.borrow_mut().set_digit(&char, color, decimal)
+        }
+    }
+
 }
 
 trait NumericSevenSegmentDisplay {
-    fn set_digit(&mut self, value: SevenSegmentChar, color: (u8, u8, u8), decimal: bool);
+    fn set_digit(&mut self, value: &SevenSegmentChar, color: (u8, u8, u8), decimal: bool);
 }
 
 #[derive(Clone, Debug)]
-enum SevenSegmentChar {
+pub enum SevenSegmentChar {
     Number(u8),
     Minus,
     BLANK,
 }
 
 impl NumericSevenSegmentDisplay for SevenSegmentDisplay {
-    fn set_digit(&mut self, char: SevenSegmentChar, color: (u8, u8, u8), decimal: bool) {
+    fn set_digit(&mut self, char: &SevenSegmentChar, color: (u8, u8, u8), decimal: bool) {
         let mut encoded = match char {
             SevenSegmentChar::Number(value) => match value {
                 0 => ZERO,
@@ -228,7 +234,7 @@ impl NumericDisplay<'_> {
         for (idx, (char, decimal)) in chars.into_iter().enumerate() {
             self.digits[idx]
                 .borrow_mut()
-                .set_digit(char, self.color_rgb, decimal)
+                .set_digit(&char, self.color_rgb, decimal)
         }
 
         Ok(())

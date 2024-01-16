@@ -1,6 +1,6 @@
 use colorgrad::Gradient;
 use crate::error::SolarMonitorError;
-use crate::rgbdigit::{NumericDisplay, SevenSegmentDisplayString};
+use crate::rgbdigit::{NumericDisplay, SevenSegmentChar, SevenSegmentDisplayString};
 use crate::solar_status::{SolarStatus, SolarStatusDisplay};
 
 pub struct RgbDigitDisplay<'a> {
@@ -91,6 +91,8 @@ impl SolarStatusDisplay for RgbDigitDisplay<'_> {
     }
 
     fn show_error(&mut self, err: &SolarMonitorError) -> Result<(), SolarMonitorError> {
+        self.display.set_all(SevenSegmentChar::Minus, (255, 0, 0), false);
+        self.display.flush();
         eprintln!("Intercepted error: {:?}", err);
         Ok(())
     }

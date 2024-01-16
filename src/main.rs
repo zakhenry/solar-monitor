@@ -11,7 +11,7 @@ use solar_status::SolarStatusDisplay;
 
 use crate::error::SolarMonitorError;
 use crate::rgbdigit::SevenSegmentDisplayString;
-use crate::tesla_powerwall::PowerwallApi;
+use crate::tesla_powerwall::{PowerwallApi};
 
 #[cfg(feature = "i2c_display")]
 mod i2c_display;
@@ -34,9 +34,16 @@ async fn main_loop(
     powerwall.wait_for_connection().await?;
 
     loop {
-        let status = powerwall.get_stats().await?;
+        let status = powerwall.get_stats().await;
 
-        display.show_status(status)?;
+        match status {
+            Ok(status) => {
+                display.show_status(status)?;
+            }
+            Err(e) => {
+                display.show_error(&e.into())?;
+            }
+        }
 
         thread::sleep(time::Duration::from_millis(1_000));
 

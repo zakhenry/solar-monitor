@@ -7,10 +7,12 @@ extern crate reqwest_rustls_tls as reqwest;
 use reqwest_rustls_tls::{Error, Response};
 use serde::Deserialize;
 use std::env;
+use std::env::VarError;
 use std::fmt::{Debug, Display, Formatter};
 use std::time::Duration;
 
 use crate::error::SolarMonitorError;
+use crate::rgbdigit::SevenSegmentChar::Number;
 
 pub struct PowerwallApi {
     ip_address: String,
