@@ -1,8 +1,8 @@
-use std::cell::RefCell;
-use colorgrad::Gradient;
 use crate::error::SolarMonitorError;
 use crate::rgbdigit::{NumericDisplay, SevenSegmentDisplayString};
 use crate::solar_status::{SolarStatus, SolarStatusDisplay};
+use colorgrad::Gradient;
+use std::cell::RefCell;
 
 pub struct RgbDigitDisplay<'a> {
     pub(crate) display: &'a SevenSegmentDisplayString,
@@ -36,19 +36,21 @@ unsafe impl Send for NumericDisplay<'_> {}
 unsafe impl Sync for NumericDisplay<'_> {}
 
 impl SolarStatusDisplay for RgbDigitDisplay<'_> {
-
-
     fn show_status(&mut self, status: SolarStatus) -> Result<(), SolarMonitorError> {
         let solar_generation_kw: f32 = status.solar_power_watts.clamp(0, i32::MAX) as f32 / 1000.0;
         let solar_generation_formatted = format!("{solar_generation_kw:.1}");
 
-        &self.solar_generation_status.set_value(solar_generation_formatted);
+        &self
+            .solar_generation_status
+            .set_value(solar_generation_formatted);
         &self.solar_generation_status.set_color((100, 100, 0));
         &self.solar_generation_status.write();
 
         let house_consumption_kw: f32 = status.house_power_watts as f32 / 1000.0;
         let house_consumption_formatted = format!("{house_consumption_kw:.1}");
-        &self.house_consumption_status.set_value(house_consumption_formatted);
+        &self
+            .house_consumption_status
+            .set_value(house_consumption_formatted);
         &self.house_consumption_status.set_color((30, 10, 80));
         &self.house_consumption_status.write();
 

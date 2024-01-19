@@ -1,19 +1,16 @@
-use std::{thread, time};
-use std::net::SocketAddr;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
+use std::{thread, time};
 
-use bytes::Bytes;
+use axum::extract::State;
+use axum::response::IntoResponse;
+use axum::{routing::get, Router};
+use axum::routing::put;
 use dotenv::dotenv;
-use http_body_util::{BodyExt, Empty, Full};
-use http_body_util::combinators::BoxBody;
-use hyper::{Method, Request, Response, StatusCode};
-use hyper::server::conn::http1;
-use hyper::service::service_fn;
-use hyper_util::rt::TokioIo;
 use rand::prelude::*;
 use tokio::net::TcpListener;
+use tokio::signal;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::sleep;
@@ -61,77 +58,47 @@ async fn main_loop(
     Ok(())
 }
 
-async fn respond(
-    req: Request<hyper::body::Incoming>,
-    sender: Sender<Command>,
-) -> Result<Response<BoxBody<Bytes, hyper::Error>>, hyper::Error> {
-    match (req.method(), req.uri().path()) {
-        (&Method::GET, "/") => Ok(Response::new(full(
-            "Try PUT to /start or /stop",
-        ))),
-        (&Method::PUT, "/start") => {
-
-            sender.send(Command::START).await;
-
-            println!("Starting solar monitor");
-            Ok(Response::new(full(
-                "Starting solar monitor...",
-            )))
-        },
-        (&Method::PUT, "/stop") => {
-            println!("Stopping solar monitor");
-            sender.send(Command::STOP).await;
-            Ok(Response::new(full(
-                "Stopping solar monitor...",
-            )))
-        },
-
-        // Return 404 Not Found for other routes.
-        _ => {
-            let mut not_found = Response::new(empty());
-            *not_found.status_mut() = StatusCode::NOT_FOUND;
-            Ok(not_found)
-        }
-    }
+async fn root() -> &'static str {
+    "Hello, World!"
 }
 
-// We create some utility functions to make Empty and Full bodies
-// fit our broadened Response body type.
-fn empty() -> BoxBody<Bytes, hyper::Error> {
-    Empty::<Bytes>::new()
-        .map_err(|never| match never {})
-        .boxed()
+async fn start_display(State(app_state): State<AppState>) -> impl IntoResponse {
+    app_state.command_sender.send(Command::START).await.unwrap();
+
+    println!("Starting solar monitor");
+
+    "Starting solar monitor..."
 }
-fn full<T: Into<Bytes>>(chunk: T) -> BoxBody<Bytes, hyper::Error> {
-    Full::new(chunk.into())
-        .map_err(|never| match never {})
-        .boxed()
+
+async fn stop_display(State(app_state): State<AppState>) -> impl IntoResponse {
+    app_state.command_sender.send(Command::STOP).await.unwrap();
+
+    println!("Stopping solar monitor");
+
+    "Stopping solar monitor..."
 }
 
 #[derive(Debug)]
 enum Command {
     START,
     STOP,
-    TICK
+    TICK,
+}
+
+#[derive(Clone)]
+struct AppState {
+    command_sender: Sender<Command>,
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-
-
+async fn main() /* -> Result<(), Box<dyn std::error::Error + Send + Sync>>*/
+{
     dotenv().ok();
-
-
 
     let (tx, mut rx) = mpsc::channel(32);
 
     let webserver_tx = tx.clone();
     let shutdown_tx = tx.clone();
-
-
-
-    let shutdown = Arc::new(AtomicBool::new(false));
-
 
     let ticker = tokio::spawn(async move {
         loop {
@@ -140,37 +107,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     });
 
-    let shutdown_copy = Arc::clone(&shutdown);
-    ctrlc::set_handler(move || {
+    let ctrl_c = async move {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+
         println!("received ctrl+c");
-        shutdown_copy.store(true, Ordering::Relaxed);
-        shutdown_tx.send(Command::STOP);
-        ticker.abort_handle().abort()
-    })
-        .expect("Error setting Ctrl-C handler");
+
+        ticker.abort();
+
+        shutdown_tx.send(Command::STOP).await.unwrap();
+    };
 
     #[cfg(not(feature = "i2c_display"))]
-        let mut display = console_display::ConsoleDisplay {};
+    let mut display = console_display::ConsoleDisplay {};
 
     // display.startup()?;
 
     // This address is localhost
-    let addr: SocketAddr = ([0, 0, 0, 0], 3000).into();
 
     tokio::spawn(async move {
-
         #[cfg(feature = "i2c_display")]
-            // let mut display = i2c_display::RaspiWithDisplay::new();
-
+        // let mut display = i2c_display::RaspiWithDisplay::new();
         let adapter = WS28xxSpiAdapter::new("/dev/spidev0.0").unwrap();
         let seven_segment_display = SevenSegmentDisplayString::new(adapter, 8);
         let mut display = rgbdigit_display::RgbDigitDisplay {
             display: &seven_segment_display,
             solar_generation_status: &mut seven_segment_display.derive_numeric_display(&[4, 5]),
-            house_consumption_status: &mut seven_segment_display.derive_numeric_display(&[6,7]),
+            house_consumption_status: &mut seven_segment_display.derive_numeric_display(&[6, 7]),
             battery_status: &mut seven_segment_display.derive_numeric_display(&[0, 1]),
             grid_status: &mut seven_segment_display.derive_numeric_display(&[2, 3]),
-            gradient: colorgrad::viridis()
+            gradient: colorgrad::viridis(),
         };
 
         // display.startup().unwrap(); // @todo
@@ -182,7 +149,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let mut output = false;
 
         while let Some(message) = rx.recv().await {
-
             let result = match message {
                 Command::START => {
                     output = true;
@@ -204,46 +170,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 }
             };
 
-
             println!("{:?} result: {:?}", message, result);
         }
-
     });
 
-
-    // Bind to the port and listen for incoming TCP connections
-    let listener = TcpListener::bind(addr).await?;
-    println!("Listening on http://{}", addr);
-    loop {
-        // When an incoming TCP connection is received grab a TCP stream for
-        // client<->server communication.
-        //
-        // Note, this is a .await point, this loop will loop forever but is not a busy loop. The
-        // .await point allows the Tokio runtime to pull the task off of the thread until the task
-        // has work to do. In this case, a connection arrives on the port we are listening on and
-        // the task is woken up, at which point the task is then put back on a thread, and is
-        // driven forward by the runtime, eventually yielding a TCP stream.
-        let (tcp, _) = listener.accept().await?;
-        // Use an adapter to access something implementing `tokio::io` traits as if they implement
-        // `hyper::rt` IO traits.
-        let io = TokioIo::new(tcp);
-
-        let connection_tx = webserver_tx.clone();
-        // Spin up a new task in Tokio so we can continue to listen for new TCP connection on the
-        // current task without waiting for the processing of the HTTP1 connection we just received
-        // to finish
-        tokio::task::spawn(async move {
-            // Handle the connection from the client using HTTP1 and pass any
-            // HTTP requests received on that connection to the `hello` function
-            if let Err(err) = http1::Builder::new()
-                .serve_connection(io, service_fn(move |req|{
-                    respond(req, connection_tx.clone())
-                }))
-                .await
-            {
-                println!("Error serving connection: {:?}", err);
-            }
+    // build our application with a route
+    let app = Router::new()
+        // `GET /` goes to `root`
+        .route("/", get(root))
+        // `POST /users` goes to `create_user`
+        .route("/start", put(start_display))
+        .route("/stop", put(stop_display))
+        .with_state(AppState {
+            command_sender: webserver_tx,
         });
-    }
 
+    // run our app with hyper, listening globally on port 3000
+    let listener = TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    axum::serve(listener, app)
+        .with_graceful_shutdown(ctrl_c)
+        .await
+        .unwrap()
 }
