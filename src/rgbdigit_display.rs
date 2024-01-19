@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use colorgrad::Gradient;
 use crate::error::SolarMonitorError;
 use crate::rgbdigit::{NumericDisplay, SevenSegmentDisplayString};
@@ -27,6 +28,12 @@ impl RgbDigitDisplay<'_> {
     // }
 }
 
+unsafe impl Send for RgbDigitDisplay<'_> {}
+unsafe impl Sync for RgbDigitDisplay<'_> {}
+unsafe impl Send for SevenSegmentDisplayString {}
+unsafe impl Sync for SevenSegmentDisplayString {}
+unsafe impl Send for NumericDisplay<'_> {}
+unsafe impl Sync for NumericDisplay<'_> {}
 
 impl SolarStatusDisplay for RgbDigitDisplay<'_> {
 
