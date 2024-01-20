@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use std::{thread, time};
+use std::future::Future;
 
 use axum::extract::State;
 use axum::response::IntoResponse;
@@ -126,53 +127,80 @@ async fn main() /* -> Result<(), Box<dyn std::error::Error + Send + Sync>>*/
 
     // This address is localhost
 
-    tokio::spawn(async move {
-        #[cfg(feature = "i2c_display")]
-        // let mut display = i2c_display::RaspiWithDisplay::new();
-        let adapter = WS28xxSpiAdapter::new("/dev/spidev0.0").unwrap();
-        let seven_segment_display = SevenSegmentDisplayString::new(adapter, 8);
-        let mut display = rgbdigit_display::RgbDigitDisplay {
-            display: &seven_segment_display,
-            solar_generation_status: &mut seven_segment_display.derive_numeric_display(&[4, 5]),
-            house_consumption_status: &mut seven_segment_display.derive_numeric_display(&[6, 7]),
-            battery_status: &mut seven_segment_display.derive_numeric_display(&[0, 1]),
-            grid_status: &mut seven_segment_display.derive_numeric_display(&[2, 3]),
-            gradient: colorgrad::viridis(),
-        };
 
-        // display.startup().unwrap(); // @todo
+    let local = tokio::task::LocalSet::new();
 
-        let mut powerwall = PowerwallApi::new().unwrap(); // @todo
+    let local_handle = local.run_until(async move {
 
-        // powerwall.wait_for_connection().await.unwrap(); // @todo
+        println!("Localset started");
 
-        let mut output = false;
+        tokio::task::spawn_local(async move {
+            println!("Local task started");
 
-        while let Some(message) = rx.recv().await {
-            let result = match message {
-                Command::START => {
-                    output = true;
-                    Ok(())
-                }
-                Command::TICK => {
-                    if output {
-                        let status = powerwall.get_stats().await.unwrap(); // @todo
+            #[cfg(feature = "i2c_display")]
+            // let mut display = i2c_display::RaspiWithDisplay::new();
+            let adapter = WS28xxSpiAdapter::new("/dev/spidev0.0").unwrap();
+            let mut seven_segment_display = SevenSegmentDisplayString::new(adapter, 8);
+            let solar_generation_status = seven_segment_display.derive_numeric_display(&[4, 5]);
+            let house_consumption_status = seven_segment_display.derive_numeric_display(&[6, 7]);
+            let battery_status = seven_segment_display.derive_numeric_display(&[0, 1]);
+            let grid_status = seven_segment_display.derive_numeric_display(&[2, 3]);
 
-                        display.show_status(status)
-                    } else {
-                        println!("Asleep; ignoring tick");
-                        Ok(())
-                    }
-                }
-                Command::STOP => {
-                    output = false;
-                    display.shutdown()
-                }
+            let mut display = rgbdigit_display::RgbDigitDisplay2 {
+                display: &mut seven_segment_display,
+                solar_generation_status,
+                house_consumption_status,
+                battery_status,
+                grid_status,
+                gradient: colorgrad::viridis(),
             };
 
-            println!("{:?} result: {:?}", message, result);
-        }
+            // display.startup().unwrap(); // @todo
+
+            let mut powerwall = PowerwallApi::new().unwrap(); // @todo
+
+            // powerwall.wait_for_connection().await.unwrap(); // @todo
+
+            let mut output = false;
+
+            while let Some(message) = rx.recv().await {
+                let result = match message {
+                    Command::START => {
+                        output = true;
+                        Ok(())
+                    }
+                    Command::TICK => {
+                        if output {
+                            let status = powerwall.get_stats().await.unwrap(); // @todo
+
+                            display.show_status(status)
+                        } else {
+                            println!("Asleep; ignoring tick");
+                            Ok(())
+                        }
+                    }
+                    Command::STOP => {
+                        output = false;
+                        display.shutdown()
+                    }
+                };
+
+                println!("{:?} result: {:?}", message, result);
+            }
+        }).await.unwrap();
+
     });
+
+
+
+    tokio::join!(local_handle, webserver(webserver_tx, ctrl_c));
+}
+
+async fn webserver<S>(webserver_tx: Sender<Command>, shutdown_signal: S)
+    where
+        S: Future<Output = ()> + Send + 'static {
+
+    println!("Starting webserver");
 
     // build our application with a route
     let app = Router::new()
@@ -188,7 +216,7 @@ async fn main() /* -> Result<(), Box<dyn std::error::Error + Send + Sync>>*/
     // run our app with hyper, listening globally on port 3000
     let listener = TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app)
-        .with_graceful_shutdown(ctrl_c)
+        .with_graceful_shutdown(shutdown_signal)
         .await
         .unwrap()
 }

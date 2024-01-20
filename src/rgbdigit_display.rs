@@ -1,41 +1,20 @@
-use crate::error::SolarMonitorError;
-use crate::rgbdigit::{NumericDisplay, SevenSegmentDisplayString};
-use crate::solar_status::{SolarStatus, SolarStatusDisplay};
 use colorgrad::Gradient;
-use std::cell::RefCell;
 
-pub struct RgbDigitDisplay<'a> {
-    pub(crate) display: &'a SevenSegmentDisplayString,
-    pub(crate) solar_generation_status: &'a mut NumericDisplay<'a>,
-    pub(crate) house_consumption_status: &'a mut NumericDisplay<'a>,
-    pub(crate) battery_status: &'a mut NumericDisplay<'a>,
-    pub(crate) grid_status: &'a mut NumericDisplay<'a>,
+use crate::error::SolarMonitorError;
+use crate::rgbdigit::{ NumericDisplay2, SevenSegmentDisplayString};
+use crate::solar_status::{SolarStatus, SolarStatusDisplay};
+
+pub struct RgbDigitDisplay2<'a> {
+    pub(crate) display: &'a mut SevenSegmentDisplayString,
+    pub(crate) solar_generation_status: NumericDisplay2,
+    pub(crate) house_consumption_status: NumericDisplay2,
+    pub(crate) battery_status: NumericDisplay2,
+    pub(crate) grid_status: NumericDisplay2,
     pub(crate) gradient: Gradient,
 }
 
-impl RgbDigitDisplay<'_> {
-    // this doesn't work. @todo understand why and refactor the construction logic our of main.rs
-    // fn new<'a>() -> RgbDigitDisplay<'a> {
-    //
-    //     let adapter = WS28xxSpiAdapter::new("/dev/spidev0.0").unwrap();
-    //     let seven_segment_display = SevenSegmentDisplayString::new(adapter, 4);
-    //
-    //     RgbDigitDisplay {
-    //         display: &seven_segment_display,
-    //         solar_generation_status: &mut seven_segment_display.derive_numeric_display(&[0, 1]),
-    //         house_consumption_status: &mut seven_segment_display.derive_numeric_display(&[2, 3]),
-    //     }
-    // }
-}
 
-unsafe impl Send for RgbDigitDisplay<'_> {}
-unsafe impl Sync for RgbDigitDisplay<'_> {}
-unsafe impl Send for SevenSegmentDisplayString {}
-unsafe impl Sync for SevenSegmentDisplayString {}
-unsafe impl Send for NumericDisplay<'_> {}
-unsafe impl Sync for NumericDisplay<'_> {}
-
-impl SolarStatusDisplay for RgbDigitDisplay<'_> {
+impl SolarStatusDisplay for RgbDigitDisplay2<'_> {
     fn show_status(&mut self, status: SolarStatus) -> Result<(), SolarMonitorError> {
         let solar_generation_kw: f32 = status.solar_power_watts.clamp(0, i32::MAX) as f32 / 1000.0;
         let solar_generation_formatted = format!("{solar_generation_kw:.1}");
@@ -104,3 +83,4 @@ impl SolarStatusDisplay for RgbDigitDisplay<'_> {
         Ok(())
     }
 }
+
