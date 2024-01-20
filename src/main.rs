@@ -140,18 +140,13 @@ async fn main() /* -> Result<(), Box<dyn std::error::Error + Send + Sync>>*/
             #[cfg(feature = "i2c_display")]
             // let mut display = i2c_display::RaspiWithDisplay::new();
             let adapter = WS28xxSpiAdapter::new("/dev/spidev0.0").unwrap();
-            let mut seven_segment_display = SevenSegmentDisplayString::new(adapter, 8);
-            let solar_generation_status = seven_segment_display.derive_numeric_display(&[4, 5]);
-            let house_consumption_status = seven_segment_display.derive_numeric_display(&[6, 7]);
-            let battery_status = seven_segment_display.derive_numeric_display(&[0, 1]);
-            let grid_status = seven_segment_display.derive_numeric_display(&[2, 3]);
-
-            let mut display = rgbdigit_display::RgbDigitDisplay2 {
-                display: &mut seven_segment_display,
-                solar_generation_status,
-                house_consumption_status,
-                battery_status,
-                grid_status,
+            let seven_segment_display = SevenSegmentDisplayString::new(adapter, 8);
+            let mut display = rgbdigit_display::RgbDigitDisplay {
+                display: &seven_segment_display,
+                solar_generation_status: &mut seven_segment_display.derive_numeric_display(&[4, 5]),
+                house_consumption_status: &mut seven_segment_display.derive_numeric_display(&[6, 7]),
+                battery_status: &mut seven_segment_display.derive_numeric_display(&[0, 1]),
+                grid_status: &mut seven_segment_display.derive_numeric_display(&[2, 3]),
                 gradient: colorgrad::viridis(),
             };
 

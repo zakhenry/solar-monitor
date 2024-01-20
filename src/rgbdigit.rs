@@ -52,14 +52,14 @@ impl WriteRgbDigit for WS28xxSpiAdapter {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct SevenSegmentDisplay {
     state_rgb: [u8; 24],
 }
 
 pub(crate) struct SevenSegmentDisplayString {
-    digits: Vec<SevenSegmentDisplay>,
-    adapter: Box<dyn WriteRgbDigit>,
+    digits: Vec<RefCell<SevenSegmentDisplay>>,
+    adapter: RefCell<Box<dyn WriteRgbDigit>>,
 }
 
 impl SevenSegmentDisplayString {
@@ -75,33 +75,35 @@ impl SevenSegmentDisplayString {
 
         let digits = vec![new_display_state; display_count]
             .into_iter()
+            .map(RefCell::new)
             .collect();
 
         return SevenSegmentDisplayString {
             digits,
-            adapter:  Box::new(adapter),
+            adapter: RefCell::new(Box::new(adapter)),
         };
     }
 
-    pub fn flush(&mut self) {
+    pub fn flush(&self) {
         let encoded: Vec<u8> = self
             .digits
             .iter()
-            .flat_map(|it| it.state_rgb)
+            .flat_map(|it| it.borrow().state_rgb)
             .collect();
 
         self.adapter
+            .borrow_mut()
             .write_spi_encoded(&encoded)
             .expect("should work");
     }
 
-    pub fn derive_numeric_display(&self, display_indices: &[usize]) -> NumericDisplay2 {
+    pub fn derive_numeric_display(&self, display_indices: &[usize]) -> NumericDisplay {
         let digits = display_indices
             .into_iter()
-            .map(|i| self.digits[*i])
+            .map(|i| &self.digits[*i])
             .collect();
 
-        return NumericDisplay2 {
+        return NumericDisplay {
             digits,
             value: None,
             color_rgb: (0, 0, 0),
@@ -161,13 +163,13 @@ impl NumericSevenSegmentDisplay for SevenSegmentDisplay {
     }
 }
 
-pub(crate) struct NumericDisplay2 {
-    digits: Vec<SevenSegmentDisplay>,
+pub(crate) struct NumericDisplay<'a> {
+    digits: Vec<&'a RefCell<SevenSegmentDisplay>>,
     value: Option<String>,
     color_rgb: (u8, u8, u8),
 }
 
-impl NumericDisplay2 {
+impl NumericDisplay<'_> {
     pub fn clear(&mut self) {
         self.value = None;
     }
@@ -224,6 +226,7 @@ impl NumericDisplay2 {
 
         for (idx, (char, decimal)) in chars.into_iter().enumerate() {
             self.digits[idx]
+                .borrow_mut()
                 .set_digit(char, self.color_rgb, decimal)
         }
 
@@ -241,7 +244,7 @@ mod tests {
     fn it_works() {
         let adapter = WS28xxSpiAdapter::new("/dev/spidev0.0").unwrap();
 
-        let mut display_string = SevenSegmentDisplayString::new(adapter, 4);
+        let display_string = SevenSegmentDisplayString::new(adapter, 4);
 
         let mut first_pair = display_string.derive_numeric_display(&[0, 1]);
         let mut second_pair = display_string.derive_numeric_display(&[2, 3]);

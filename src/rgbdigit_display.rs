@@ -1,20 +1,19 @@
 use colorgrad::Gradient;
 
 use crate::error::SolarMonitorError;
-use crate::rgbdigit::{ NumericDisplay2, SevenSegmentDisplayString};
+use crate::rgbdigit::{NumericDisplay, SevenSegmentDisplayString};
 use crate::solar_status::{SolarStatus, SolarStatusDisplay};
 
-pub struct RgbDigitDisplay2<'a> {
-    pub(crate) display: &'a mut SevenSegmentDisplayString,
-    pub(crate) solar_generation_status: NumericDisplay2,
-    pub(crate) house_consumption_status: NumericDisplay2,
-    pub(crate) battery_status: NumericDisplay2,
-    pub(crate) grid_status: NumericDisplay2,
+pub struct RgbDigitDisplay<'a> {
+    pub(crate) display: &'a SevenSegmentDisplayString,
+    pub(crate) solar_generation_status: &'a mut NumericDisplay<'a>,
+    pub(crate) house_consumption_status: &'a mut NumericDisplay<'a>,
+    pub(crate) battery_status: &'a mut NumericDisplay<'a>,
+    pub(crate) grid_status: &'a mut NumericDisplay<'a>,
     pub(crate) gradient: Gradient,
 }
 
-
-impl SolarStatusDisplay for RgbDigitDisplay2<'_> {
+impl SolarStatusDisplay for RgbDigitDisplay<'_> {
     fn show_status(&mut self, status: SolarStatus) -> Result<(), SolarMonitorError> {
         let solar_generation_kw: f32 = status.solar_power_watts.clamp(0, i32::MAX) as f32 / 1000.0;
         let solar_generation_formatted = format!("{solar_generation_kw:.1}");
@@ -83,4 +82,3 @@ impl SolarStatusDisplay for RgbDigitDisplay2<'_> {
         Ok(())
     }
 }
-
