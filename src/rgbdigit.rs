@@ -1,7 +1,5 @@
 use std::cell::RefCell;
-use std::{thread, time};
 
-use rand::prelude::*;
 use ws2818_rgb_led_spi_driver::adapter_gen::WS28xxAdapter;
 use ws2818_rgb_led_spi_driver::adapter_spi::WS28xxSpiAdapter;
 use ws2818_rgb_led_spi_driver::encoding::encode_rgb;
@@ -32,7 +30,7 @@ const NINE: u8 = 0b01101111;
 
 const MINUS: u8 = 0b01000000;
 
-trait WriteRgbDigit {
+pub trait WriteRgbDigit {
     fn write_spi_encoded(&mut self, encoded: &Vec<u8>) -> Result<(), String>;
 }
 
@@ -236,9 +234,11 @@ impl NumericDisplay<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::rgbdigit::SevenSegmentDisplayString;
     use std::{thread, time};
+
     use ws2818_rgb_led_spi_driver::adapter_spi::WS28xxSpiAdapter;
+
+    use crate::rgbdigit::SevenSegmentDisplayString;
 
     #[test]
     fn it_works() {
