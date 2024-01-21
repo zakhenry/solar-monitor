@@ -1,6 +1,7 @@
 use crate::error::SolarMonitorError;
 use crate::rgbdigit::{NumericDisplay, SevenSegmentChar, SevenSegmentDisplayString};
 use crate::solar_status::{SolarStatus, SolarStatusDisplay};
+use std::time::Duration;
 
 pub struct RgbDigitDisplay<'a> {
     pub(crate) display: &'a SevenSegmentDisplayString,
@@ -13,6 +14,21 @@ pub struct RgbDigitDisplay<'a> {
 impl From<String> for SolarMonitorError {
     fn from(value: String) -> Self {
         Self::DISPLAY(value)
+    }
+}
+
+impl RgbDigitDisplay<'_> {
+    pub(crate) async fn start_await(&mut self) -> Result<(), SolarMonitorError> {
+        loop {
+            self.display
+                .set_all(&SevenSegmentChar::BLANK, (100, 100, 100), true);
+            self.display.flush();
+            tokio::time::sleep(Duration::from_millis(30)).await;
+            self.display
+                .set_all(&SevenSegmentChar::BLANK, (0, 0, 0), false);
+            self.display.flush();
+            tokio::time::sleep(Duration::from_millis(15)).await;
+        }
     }
 }
 

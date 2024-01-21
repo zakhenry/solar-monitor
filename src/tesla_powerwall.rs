@@ -1,16 +1,15 @@
-use crate::solar_status::SolarStatus;
-
-use std::collections::HashMap;
-
 extern crate reqwest_rustls_tls as reqwest;
 
-use reqwest_rustls_tls::{Error, Response};
-use serde::Deserialize;
+use std::collections::HashMap;
 use std::env;
 use std::fmt::{Debug, Display, Formatter};
 use std::time::Duration;
 
+use reqwest_rustls_tls::{Error, Response};
+use serde::Deserialize;
+
 use crate::error::SolarMonitorError;
+use crate::solar_status::SolarStatus;
 
 pub struct PowerwallApi {
     ip_address: String,

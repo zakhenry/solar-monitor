@@ -9,10 +9,10 @@ use axum::routing::put;
 use axum::{routing::get, Router};
 use dotenv::dotenv;
 use tokio::net::TcpListener;
-use tokio::signal;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::sleep;
+use tokio::{select, signal};
 use ws2818_rgb_led_spi_driver::adapter_spi::WS28xxSpiAdapter;
 
 use solar_status::SolarStatusDisplay;
@@ -101,11 +101,16 @@ async fn display(mut rx: Receiver<Command>) -> Result<(), Box<dyn Error>> {
         grid_status: &mut seven_segment_display.derive_numeric_display(&[2, 3]),
     };
 
-    display.startup()?;
-
     let mut powerwall = PowerwallApi::new()?;
 
-    powerwall.wait_for_connection().await?;
+    select! {
+        _ = display.start_await() => {}
+        _ = powerwall.wait_for_connection() => {
+            // ensure the display is cleared before continuing
+            // (otherwise the cancellation might have left a startup state on the display)
+            display.clear()?
+        }
+    }
 
     let mut output = false;
     display.clear()?;
