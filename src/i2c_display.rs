@@ -1,5 +1,5 @@
-use crate::error::SolarMonitorError;
-use crate::solar_status::{SolarStatus, SolarStatusDisplay};
+use std::{thread, time};
+
 use embedded_graphics::mono_font::iso_8859_1::FONT_4X6;
 use embedded_graphics::{
     image::Image,
@@ -10,9 +10,11 @@ use embedded_graphics::{
 };
 use linux_embedded_hal::I2cdev;
 use ssd1306::{mode::BufferedGraphicsMode, prelude::*, I2CDisplayInterface, Ssd1306};
-use std::{thread, time};
 use tinybmp::Bmp;
 use tokio::time::Instant;
+
+use crate::error::SolarMonitorError;
+use crate::solar_status::{SolarStatus, SolarStatusDisplay};
 
 pub struct RaspiWithDisplay {
     display:
@@ -20,6 +22,7 @@ pub struct RaspiWithDisplay {
 }
 
 impl RaspiWithDisplay {
+    #[allow(dead_code)] // we're not using this display for now (in future we will have both the rgbdigits and the pixel display if it still works)
     pub fn new() -> RaspiWithDisplay {
         let i2c = I2cdev::new("/dev/i2c-1").unwrap();
 
@@ -153,5 +156,37 @@ impl SolarStatusDisplay for RaspiWithDisplay {
         .draw(&mut self.display)?;
         self.display.flush()?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::thread;
+    use std::time::Duration;
+
+    use crate::error::SolarMonitorError;
+    use crate::i2c_display::RaspiWithDisplay;
+    use crate::solar_status::{SolarStatus, SolarStatusDisplay};
+
+    #[test]
+    fn it_works() {
+        let mut display = RaspiWithDisplay::new();
+
+        display.startup().expect("Failed to start");
+        thread::sleep(Duration::from_millis(200));
+        display
+            .show_status(SolarStatus {
+                battery_power_watts: 1000,
+                house_power_watts: 2000,
+                solar_power_watts: 3000,
+                grid_power_watts: 4000,
+            })
+            .expect("Failed to show status");
+        thread::sleep(Duration::from_millis(200));
+        display
+            .show_error(&SolarMonitorError::BITMAP("test error".to_string()))
+            .expect("Failed to show error");
+        thread::sleep(Duration::from_millis(200));
+        display.shutdown().expect("failed to shut down");
     }
 }
