@@ -1,5 +1,5 @@
 use crate::error::SolarMonitorError;
-use crate::rgbdigit::{NumericDisplay, SevenSegmentDisplayString};
+use crate::rgbdigit::{NumericDisplay, SevenSegmentChar, SevenSegmentDisplayString};
 use crate::solar_status::{SolarStatus, SolarStatusDisplay};
 
 pub struct RgbDigitDisplay<'a> {
@@ -25,7 +25,6 @@ impl SolarStatusDisplay for RgbDigitDisplay<'_> {
             .set_value(solar_generation_formatted);
         self.solar_generation_status.set_color((100, 100, 0));
         self.solar_generation_status.write()?;
-
         let house_consumption_kw: f32 = status.house_power_watts as f32 / 1000.0;
         let house_consumption_formatted = format!("{house_consumption_kw:.1}");
         self.house_consumption_status
@@ -36,20 +35,22 @@ impl SolarStatusDisplay for RgbDigitDisplay<'_> {
         let battery_kw: f32 = (status.battery_power_watts as f32 / 1000.0).abs();
         let battery_formatted = format!("{battery_kw:.1}");
         self.battery_status.set_value(battery_formatted);
-        if battery_kw > -0.1 {
-            self.battery_status.set_color((30, 70, 20));
-        } else {
+        if status.battery_power_watts > -100 {
+            // epsilon to stop it from flickering while around zero
             self.battery_status.set_color((100, 40, 10));
+        } else {
+            self.battery_status.set_color((30, 70, 20));
         }
         self.battery_status.write()?;
 
         let grid_kw: f32 = (status.grid_power_watts as f32 / 1000.0).abs();
         let grid_formatted = format!("{grid_kw:.1}");
         self.grid_status.set_value(grid_formatted);
-        if grid_kw > -0.1 {
-            self.grid_status.set_color((30, 30, 30));
-        } else {
+        if status.grid_power_watts > 100 {
+            // epsilon to stop it from flickering while around zero
             self.grid_status.set_color((50, 0, 0));
+        } else {
+            self.grid_status.set_color((30, 30, 30));
         }
         self.grid_status.write()?;
 
@@ -75,10 +76,28 @@ impl SolarStatusDisplay for RgbDigitDisplay<'_> {
 
     fn startup(&mut self) -> Result<(), SolarMonitorError> {
         println!("Starting display");
+
+        self.display
+            .set_all(&SevenSegmentChar::BLANK, (0, 0, 100), true);
+        self.display.flush();
+
+        Ok(())
+    }
+
+    fn clear(&mut self) -> Result<(), SolarMonitorError> {
+        println!("Clearing display");
+
+        self.display
+            .set_all(&SevenSegmentChar::BLANK, (0, 0, 0), false);
+        self.display.flush();
+
         Ok(())
     }
 
     fn show_error(&mut self, err: &SolarMonitorError) -> Result<(), SolarMonitorError> {
+        self.display
+            .set_all(&SevenSegmentChar::Char('E'), (255, 0, 0), false);
+        self.display.flush();
         eprintln!("Intercepted error: {:?}", err);
         Ok(())
     }

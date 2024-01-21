@@ -28,6 +28,7 @@ const SEVEN: u8 = 0b00000111;
 const EIGHT: u8 = 0b01111111;
 const NINE: u8 = 0b01101111;
 
+const CHAR_E: u8 = 0b1111001;
 const MINUS: u8 = 0b01000000;
 
 pub trait WriteRgbDigit {
@@ -95,6 +96,12 @@ impl SevenSegmentDisplayString {
             .expect("should work");
     }
 
+    pub fn set_all(&self, char: &SevenSegmentChar, color: (u8, u8, u8), decimal: bool) {
+        for display in &self.digits {
+            display.borrow_mut().set_digit(char, color, decimal)
+        }
+    }
+
     pub fn derive_numeric_display(&self, display_indices: &[usize]) -> NumericDisplay {
         let digits = display_indices
             .into_iter()
@@ -110,18 +117,19 @@ impl SevenSegmentDisplayString {
 }
 
 trait NumericSevenSegmentDisplay {
-    fn set_digit(&mut self, value: SevenSegmentChar, color: (u8, u8, u8), decimal: bool);
+    fn set_digit(&mut self, value: &SevenSegmentChar, color: (u8, u8, u8), decimal: bool);
 }
 
 #[derive(Clone, Debug)]
-enum SevenSegmentChar {
+pub enum SevenSegmentChar {
     Number(u8),
     Minus,
     BLANK,
+    Char(char),
 }
 
 impl NumericSevenSegmentDisplay for SevenSegmentDisplay {
-    fn set_digit(&mut self, char: SevenSegmentChar, color: (u8, u8, u8), decimal: bool) {
+    fn set_digit(&mut self, char: &SevenSegmentChar, color: (u8, u8, u8), decimal: bool) {
         let mut encoded = match char {
             SevenSegmentChar::Number(value) => match value {
                 0 => ZERO,
@@ -139,6 +147,10 @@ impl NumericSevenSegmentDisplay for SevenSegmentDisplay {
 
             SevenSegmentChar::Minus => MINUS,
             SevenSegmentChar::BLANK => 0,
+            SevenSegmentChar::Char(c) => match c {
+                'E' => CHAR_E,
+                _ => panic!("Char {} not implemented!", c),
+            },
         };
 
         if decimal {
@@ -225,7 +237,7 @@ impl NumericDisplay<'_> {
         for (idx, (char, decimal)) in chars.into_iter().enumerate() {
             self.digits[idx]
                 .borrow_mut()
-                .set_digit(char, self.color_rgb, decimal)
+                .set_digit(&char, self.color_rgb, decimal)
         }
 
         Ok(())

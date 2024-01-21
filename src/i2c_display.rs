@@ -142,6 +142,10 @@ impl SolarStatusDisplay for RaspiWithDisplay {
         Ok(())
     }
 
+    fn clear(&mut self) -> Result<(), SolarMonitorError> {
+        self.shutdown()
+    }
+
     fn show_error(&mut self, err: &SolarMonitorError) -> Result<(), SolarMonitorError> {
         self.display.clear(BinaryColor::On)?;
 

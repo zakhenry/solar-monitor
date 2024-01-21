@@ -108,6 +108,7 @@ async fn display(mut rx: Receiver<Command>) -> Result<(), Box<dyn Error>> {
     powerwall.wait_for_connection().await?;
 
     let mut output = false;
+    display.clear()?;
 
     while let Some(message) = rx.recv().await {
         let result = match message {
