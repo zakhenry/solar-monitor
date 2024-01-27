@@ -83,15 +83,7 @@ impl SolarStatusDisplay for RgbDigitDisplay<'_> {
 
     fn shutdown(&mut self) -> Result<(), SolarMonitorError> {
         println!("Shutting down display");
-        self.solar_generation_status.clear();
-        self.solar_generation_status.write()?;
-        self.house_consumption_status.clear();
-        self.house_consumption_status.write()?;
-        self.battery_status.clear();
-        self.battery_status.write()?;
-        self.grid_status.clear();
-        self.grid_status.write()?;
-        self.display.flush();
+        self.clear()?;
         Ok(())
     }
 
