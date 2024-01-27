@@ -9,6 +9,7 @@ pub struct RgbDigitDisplay<'a> {
     pub(crate) house_consumption_status: &'a mut NumericDisplay<'a>,
     pub(crate) battery_status: &'a mut NumericDisplay<'a>,
     pub(crate) grid_status: &'a mut NumericDisplay<'a>,
+    pub(crate) battery_level: &'a mut NumericDisplay<'a>,
 }
 
 impl From<String> for SolarMonitorError {
@@ -69,6 +70,10 @@ impl SolarStatusDisplay for RgbDigitDisplay<'_> {
             self.grid_status.set_color((30, 30, 30));
         }
         self.grid_status.write()?;
+
+        self.battery_level.set_value(format!("{:.0}", status.battery_level_percent));
+        self.battery_level.set_color((100, 0, 100));
+        self.battery_level.write()?;
 
         self.display.flush();
 

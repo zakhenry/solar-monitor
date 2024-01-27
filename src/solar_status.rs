@@ -5,6 +5,7 @@ pub struct SolarStatus {
     pub battery_power_watts: i32,
     pub house_power_watts: i32,
     pub grid_power_watts: i32,
+    pub battery_level_percent: f64,
 }
 
 pub trait SolarStatusDisplay {
