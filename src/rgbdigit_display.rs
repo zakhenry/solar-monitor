@@ -71,7 +71,11 @@ impl SolarStatusDisplay for RgbDigitDisplay<'_> {
         }
         self.grid_status.write()?;
 
-        self.battery_level.set_value(format!("{:.0}", status.battery_level_percent));
+        self.battery_level.set_value(format!(
+            "{:.0}",
+            // clamp as 100% requires 3 digits which we don't have
+            status.battery_level_percent.clamp(0.0, 99.0)
+        ));
         self.battery_level.set_color((100, 0, 100));
         self.battery_level.write()?;
 

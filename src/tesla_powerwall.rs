@@ -49,14 +49,16 @@ struct MetersAggregatesResponse {
 }
 
 impl From<(MetersAggregatesResponse, BatteryLevelResponse)> for SolarStatus {
-    fn from((meter_aggregates, battery_level): (MetersAggregatesResponse, BatteryLevelResponse)) -> Self {
+    fn from(
+        (meter_aggregates, battery_level): (MetersAggregatesResponse, BatteryLevelResponse),
+    ) -> Self {
         SolarStatus {
             solar_power_watts: meter_aggregates.solar.instant_power as i32,
             battery_power_watts: meter_aggregates.battery.instant_power as i32,
             house_power_watts: meter_aggregates.load.instant_power as i32,
             grid_power_watts: meter_aggregates.site.instant_power as i32,
             // Note: Tesla App reserves 5% of battery = ( (batterylevel / 0.95) - (5 / 0.95) )
-            battery_level_percent: (battery_level.percentage / 0.95) - (5.0/0.95),
+            battery_level_percent: (battery_level.percentage / 0.95) - (5.0 / 0.95),
         }
     }
 }
@@ -175,7 +177,9 @@ impl PowerwallApi {
             .await?)
     }
 
-    async fn get_battery_percentage_response(&mut self) -> Result<reqwest::Response, PowerwallApiError> {
+    async fn get_battery_percentage_response(
+        &mut self,
+    ) -> Result<reqwest::Response, PowerwallApiError> {
         Ok(self
             .client
             .get(format!("https://{}/api/system_status/soe", self.ip_address))
@@ -184,8 +188,9 @@ impl PowerwallApi {
             .await?)
     }
 
-    async fn get_meter_aggregates(&mut self) -> Result<MetersAggregatesResponse, PowerwallApiError> {
-
+    async fn get_meter_aggregates(
+        &mut self,
+    ) -> Result<MetersAggregatesResponse, PowerwallApiError> {
         let response = self.get_stats_response().await?;
 
         let body = match response.status() {
@@ -204,7 +209,6 @@ impl PowerwallApi {
     }
 
     async fn get_battery_percentage(&mut self) -> Result<BatteryLevelResponse, PowerwallApiError> {
-
         let response = self.get_battery_percentage_response().await?;
 
         let body = match response.status() {
