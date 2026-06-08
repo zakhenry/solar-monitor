@@ -5,7 +5,8 @@ set -o nounset
 set -o pipefail
 set -o xtrace
 
-readonly TARGET_HOST=zak@solarmonitor.local
+# requires host `solarmonitor` to be available on network. Configure router DNS if unavailable
+readonly TARGET_HOST=zak@solarmonitor
 readonly TARGET_PATH=/home/zak/solar-monitor
 # requires `brew install arm-unknown-linux-gnueabihf`
 readonly TARGET_ARCH=arm-unknown-linux-gnueabihf

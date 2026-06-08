@@ -12,7 +12,7 @@ use crate::error::SolarMonitorError;
 use crate::solar_status::SolarStatus;
 
 pub struct PowerwallApi {
-    ip_address: String,
+    pub(crate) ip_address: String,
     api_token: Option<String>,
     client: reqwest::Client,
 }
@@ -124,10 +124,14 @@ impl PowerwallApi {
     pub async fn wait_for_connection(&self) -> Result<(), PowerwallApiError> {
         println!("Checking connection");
 
-        tryhard::retry_fn(|| self.check_status())
-            .retries(300) // 1 full minute
-            .fixed_backoff(Duration::from_millis(200))
-            .await?;
+        tryhard::retry_fn(async || {
+            self.check_status()
+                .await
+                .inspect_err(|e| eprintln!("{:?}", e))
+        })
+        .retries(300) // 1 full minute
+        .fixed_backoff(Duration::from_millis(200))
+        .await?;
 
         println!("Connection is ready");
 

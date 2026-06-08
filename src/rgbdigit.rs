@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::sync::{Arc, Mutex};
 
 use ws2818_rgb_led_spi_driver::adapter_gen::WS28xxAdapter;
 use ws2818_rgb_led_spi_driver::adapter_spi::WS28xxSpiAdapter;
@@ -57,8 +57,8 @@ struct SevenSegmentDisplay {
 }
 
 pub(crate) struct SevenSegmentDisplayString {
-    digits: Vec<RefCell<SevenSegmentDisplay>>,
-    adapter: RefCell<Box<dyn WriteRgbDigit>>,
+    digits: Vec<Arc<Mutex<SevenSegmentDisplay>>>,
+    adapter: Arc<Mutex<Box<dyn WriteRgbDigit>>>,
 }
 
 impl SevenSegmentDisplayString {
@@ -66,7 +66,6 @@ impl SevenSegmentDisplayString {
         adapter: impl WriteRgbDigit + 'static,
         display_count: usize,
     ) -> SevenSegmentDisplayString {
-        // let display_init: [u8; 24] = random();
         let display_init: [u8; 24] = [0; 24];
         let new_display_state = SevenSegmentDisplay {
             state_rgb: display_init,
@@ -74,45 +73,46 @@ impl SevenSegmentDisplayString {
 
         let digits = vec![new_display_state; display_count]
             .into_iter()
-            .map(RefCell::new)
+            .map(|display_state| Arc::new(Mutex::new(display_state)))
             .collect();
 
-        return SevenSegmentDisplayString {
+        SevenSegmentDisplayString {
             digits,
-            adapter: RefCell::new(Box::new(adapter)),
-        };
+            adapter: Arc::new(Mutex::new(Box::new(adapter))),
+        }
     }
 
     pub fn flush(&self) {
         let encoded: Vec<u8> = self
             .digits
             .iter()
-            .flat_map(|it| it.borrow().state_rgb)
+            .flat_map(|it| it.lock().unwrap().state_rgb)
             .collect();
 
         self.adapter
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .write_spi_encoded(&encoded)
             .expect("should work");
     }
 
     pub fn set_all(&self, char: &SevenSegmentChar, color: (u8, u8, u8), decimal: bool) {
         for display in &self.digits {
-            display.borrow_mut().set_digit(char, color, decimal)
+            display.lock().unwrap().set_digit(char, color, decimal)
         }
     }
 
     pub fn derive_numeric_display(&self, display_indices: &[usize]) -> NumericDisplay {
         let digits = display_indices
             .into_iter()
-            .map(|i| &self.digits[*i])
+            .map(|i| self.digits[*i].clone())
             .collect();
 
-        return NumericDisplay {
+        NumericDisplay {
             digits,
             value: None,
             color_rgb: (0, 0, 0),
-        };
+        }
     }
 }
 
@@ -173,13 +173,13 @@ impl NumericSevenSegmentDisplay for SevenSegmentDisplay {
     }
 }
 
-pub(crate) struct NumericDisplay<'a> {
-    digits: Vec<&'a RefCell<SevenSegmentDisplay>>,
+pub(crate) struct NumericDisplay {
+    digits: Vec<Arc<Mutex<SevenSegmentDisplay>>>,
     value: Option<String>,
     color_rgb: (u8, u8, u8),
 }
 
-impl NumericDisplay<'_> {
+impl NumericDisplay {
     pub fn clear(&mut self) {
         self.value = None;
     }
@@ -236,7 +236,8 @@ impl NumericDisplay<'_> {
 
         for (idx, (char, decimal)) in chars.into_iter().enumerate() {
             self.digits[idx]
-                .borrow_mut()
+                .lock()
+                .unwrap() // @todo handle error
                 .set_digit(&char, self.color_rgb, decimal)
         }
 

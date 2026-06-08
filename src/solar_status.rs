@@ -14,4 +14,5 @@ pub trait SolarStatusDisplay {
     fn startup(&mut self) -> Result<(), SolarMonitorError>;
     fn clear(&mut self) -> Result<(), SolarMonitorError>;
     fn show_error(&mut self, err: &SolarMonitorError) -> Result<(), SolarMonitorError>;
+    async fn start_await(&mut self) -> Result<(), SolarMonitorError>;
 }

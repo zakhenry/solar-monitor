@@ -15,10 +15,10 @@ use tokio::time::sleep;
 use tokio::{select, signal};
 use ws2818_rgb_led_spi_driver::adapter_spi::WS28xxSpiAdapter;
 
-use solar_status::SolarStatusDisplay;
-
+use crate::error::SolarMonitorError;
 use crate::rgbdigit::SevenSegmentDisplayString;
 use crate::tesla_powerwall::PowerwallApi;
+use solar_status::SolarStatusDisplay;
 
 #[cfg(feature = "i2c_display")]
 mod i2c_display;
@@ -86,59 +86,46 @@ struct AppState {
     command_sender: Sender<Command>,
 }
 
-async fn display(mut rx: Receiver<Command>) -> Result<(), Box<dyn Error>> {
-    #[cfg(not(feature = "i2c_display"))]
-    let mut display = console_display::ConsoleDisplay {};
-
-    #[cfg(feature = "i2c_display")]
-    let adapter = WS28xxSpiAdapter::new("/dev/spidev0.0")?;
-    let seven_segment_display = SevenSegmentDisplayString::new(adapter, 10);
-    let mut display = rgbdigit_display::RgbDigitDisplay {
-        display: &seven_segment_display,
-        solar_generation_status: &mut seven_segment_display.derive_numeric_display(&[4, 5]),
-        house_consumption_status: &mut seven_segment_display.derive_numeric_display(&[6, 7]),
-        battery_status: &mut seven_segment_display.derive_numeric_display(&[0, 1]),
-        grid_status: &mut seven_segment_display.derive_numeric_display(&[2, 3]),
-        battery_level: &mut seven_segment_display.derive_numeric_display(&[8, 9]),
-    };
-
-    let mut powerwall = PowerwallApi::new()?;
-
-    select! {
-        _ = display.start_await() => {}
-        _ = powerwall.wait_for_connection() => {
-            // ensure the display is cleared before continuing
-            // (otherwise the cancellation might have left a startup state on the display)
-            display.clear()?
-        }
-    }
-
+async fn process_event_loop<D: SolarStatusDisplay>(
+    mut rx: Receiver<Command>,
+    mut display: &mut D,
+    mut powerwall: PowerwallApi,
+) -> Result<(), Box<dyn Error>> {
     let mut output = false;
     display.clear()?;
 
     while let Some(message) = rx.recv().await {
-        let result = match message {
+        match message {
             Command::START => {
                 output = true;
-                Ok(())
+                println!("Starting solar monitor");
             }
             Command::TICK => {
                 if output {
-                    let status = powerwall.get_stats().await?;
-
-                    display.show_status(status)
+                    match powerwall.get_stats().await {
+                        Ok(status) => {
+                            display
+                                .show_status(status)
+                                .inspect_err(|e| eprintln!("Failed to show status: {:?}", e))
+                                .ok();
+                        }
+                        Err(e) => {
+                            println!("Failed to retrieve powerwall status {:?}", &e);
+                            display.show_error(&SolarMonitorError::API(e)).ok();
+                        }
+                    }
                 } else {
                     println!("Asleep; ignoring tick");
-                    Ok(())
                 }
             }
             Command::STOP => {
                 output = false;
-                display.shutdown()
+                display
+                    .shutdown()
+                    .inspect_err(|e| eprintln!("Failed to shutdown display: {:?}", e))
+                    .ok();
             }
-        };
-
-        println!("{:?} result: {:?}", message, result);
+        }
     }
 
     Ok(())
@@ -176,10 +163,47 @@ async fn main() {
     let local_handle = local.run_until(async move {
         println!("Localset started");
 
-        tokio::task::spawn_local(display(rx))
-            .await
-            .unwrap()
-            .unwrap();
+        #[cfg(not(feature = "i2c_display"))]
+        let mut display = console_display::ConsoleDisplay {};
+
+        #[cfg(feature = "i2c_display")]
+        let adapter = WS28xxSpiAdapter::new("/dev/spidev0.0").expect("Could not open ws28x SPI device");
+        #[cfg(feature = "i2c_display")]
+        let seven_segment_display = SevenSegmentDisplayString::new(adapter, 10);
+        #[cfg(feature = "i2c_display")]
+        let mut display = rgbdigit_display::RgbDigitDisplay {
+            display: &seven_segment_display,
+            solar_generation_status: &mut seven_segment_display.derive_numeric_display(&[2, 3]),
+            house_consumption_status: &mut seven_segment_display.derive_numeric_display(&[4, 5]),
+            battery_status: &mut seven_segment_display.derive_numeric_display(&[6, 7]),
+            grid_status: &mut seven_segment_display.derive_numeric_display(&[0, 1]),
+            battery_level: &mut seven_segment_display.derive_numeric_display(&[8, 9]),
+        };
+
+        let powerwall = PowerwallApi::new().expect("failed to create powerwall API");
+
+        println!(
+            "Connecting to powerwall on {ip}...",
+            ip = powerwall.ip_address
+        );
+
+        select! {
+            _ = display.start_await() => {}
+            powerwall_connection_result = powerwall.wait_for_connection() => {
+                display.clear().inspect_err(|e| {
+                    eprintln!("Failed to retrieve clear screen status {:?}", e);
+                }).ok();
+
+                if let Err(err) = powerwall_connection_result {
+                    eprintln!("Failed to connect to powerwall {:?}", err);
+                    display.show_error(&SolarMonitorError::API(err)).inspect_err(|e| {
+                        eprintln!("Failed to show error state {:?}", e);
+                    }).ok();
+                }
+            }
+        }
+
+        process_event_loop(rx, &mut display, powerwall).await.unwrap();
     });
 
     let (_, webserver_result) = tokio::join!(local_handle, webserver(webserver_tx, ctrl_c));

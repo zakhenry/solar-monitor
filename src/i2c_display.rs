@@ -48,6 +48,10 @@ impl From<tinybmp::ParseError> for SolarMonitorError {
 }
 
 impl SolarStatusDisplay for RaspiWithDisplay {
+    async fn start_await(&mut self) -> Result<(), SolarMonitorError> {
+        self.startup()
+    }
+
     fn startup(&mut self) -> Result<(), SolarMonitorError> {
         let frames: Vec<Bmp<BinaryColor>> = vec![
             include_bytes!("resources/solar-spy-1.bmp"),

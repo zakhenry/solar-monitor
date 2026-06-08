@@ -19,8 +19,17 @@ impl SolarStatusDisplay for ConsoleDisplay {
         Ok(())
     }
 
+    fn clear(&mut self) -> Result<(), SolarMonitorError> {
+        println!("Skipping clear");
+        Ok(())
+    }
+
     fn show_error(&mut self, err: &SolarMonitorError) -> Result<(), SolarMonitorError> {
         eprintln!("Intercepted error: {:?}", err);
+        Ok(())
+    }
+
+    async fn start_await(&mut self) -> Result<(), SolarMonitorError> {
         Ok(())
     }
 }

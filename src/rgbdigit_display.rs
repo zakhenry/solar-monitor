@@ -5,11 +5,11 @@ use std::time::Duration;
 
 pub struct RgbDigitDisplay<'a> {
     pub(crate) display: &'a SevenSegmentDisplayString,
-    pub(crate) solar_generation_status: &'a mut NumericDisplay<'a>,
-    pub(crate) house_consumption_status: &'a mut NumericDisplay<'a>,
-    pub(crate) battery_status: &'a mut NumericDisplay<'a>,
-    pub(crate) grid_status: &'a mut NumericDisplay<'a>,
-    pub(crate) battery_level: &'a mut NumericDisplay<'a>,
+    pub(crate) solar_generation_status: &'a mut NumericDisplay,
+    pub(crate) house_consumption_status: &'a mut NumericDisplay,
+    pub(crate) battery_status: &'a mut NumericDisplay,
+    pub(crate) grid_status: &'a mut NumericDisplay,
+    pub(crate) battery_level: &'a mut NumericDisplay,
 }
 
 impl From<String> for SolarMonitorError {
@@ -18,8 +18,8 @@ impl From<String> for SolarMonitorError {
     }
 }
 
-impl RgbDigitDisplay<'_> {
-    pub(crate) async fn start_await(&mut self) -> Result<(), SolarMonitorError> {
+impl SolarStatusDisplay for RgbDigitDisplay<'_> {
+    async fn start_await(&mut self) -> Result<(), SolarMonitorError> {
         loop {
             self.display
                 .set_all(&SevenSegmentChar::BLANK, (100, 100, 100), true);
@@ -31,9 +31,7 @@ impl RgbDigitDisplay<'_> {
             tokio::time::sleep(Duration::from_millis(15)).await;
         }
     }
-}
 
-impl SolarStatusDisplay for RgbDigitDisplay<'_> {
     fn show_status(&mut self, status: SolarStatus) -> Result<(), SolarMonitorError> {
         let solar_generation_kw: f32 = status.solar_power_watts.clamp(0, i32::MAX) as f32 / 1000.0;
         let solar_generation_formatted = format!("{solar_generation_kw:.1}");
@@ -72,7 +70,7 @@ impl SolarStatusDisplay for RgbDigitDisplay<'_> {
         self.grid_status.write()?;
 
         self.battery_level.set_value(format!(
-            "{:.0}",
+            "{: >2.0}",
             // clamp as 100% requires 3 digits which we don't have
             status.battery_level_percent.clamp(0.0, 99.0)
         ));
